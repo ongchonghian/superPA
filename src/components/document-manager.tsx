@@ -26,10 +26,10 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
     }
   };
 
-  const handleUploadClick = () => {
+  const handleUploadClick = async () => {
     if (selectedFiles) {
-      onUpload(selectedFiles); // Fire-and-forget: Start the upload but don't wait for it here.
-      setSelectedFiles(null); // Reset local state immediately.
+      await onUpload(selectedFiles);
+      setSelectedFiles(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
