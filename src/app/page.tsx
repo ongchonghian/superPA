@@ -21,6 +21,7 @@ import {
   arrayRemove,
   writeBatch,
 } from 'firebase/firestore';
+import { getAuth, onAuthStateChanged, signInAnonymously, type User } from 'firebase/auth';
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
@@ -30,10 +31,6 @@ import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-ste
 import { TaskDialog } from '@/components/task-dialog';
 import { TaskRemarksSheet } from '@/components/task-remarks-sheet';
 import { DocumentManager } from '@/components/document-manager';
-
-// This is a placeholder for a real user authentication system.
-// In a real app, you would get this from your auth provider.
-const USER_ID = "user_123";
 
 // Helper to convert a File to a Base64 Data URI
 const fileToDataUri = (file: File): Promise<string> => {
@@ -47,6 +44,7 @@ const fileToDataUri = (file: File): Promise<string> => {
 
 export default function Home() {
   const { toast } = useToast();
+  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
@@ -65,10 +63,37 @@ export default function Home() {
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
 
+  // Effect to handle anonymous user authentication
+  useEffect(() => {
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+      } else {
+        signInAnonymously(auth).catch((error) => {
+          console.error("Error signing in anonymously:", error);
+          toast({
+            title: "Authentication Error",
+            description: "Could not establish a user session.",
+            variant: "destructive",
+          });
+        });
+      }
+    });
+    return () => unsubscribe();
+  }, [toast]);
+
+
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
+    if (!user) {
+      setChecklistMetas([]);
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
-    const q = query(collection(db, 'checklists'), where('ownerId', '==', USER_ID));
+    const q = query(collection(db, 'checklists'), where('ownerId', '==', user.uid));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
@@ -94,7 +119,7 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [toast]);
+  }, [toast, user]);
 
   // Effect to subscribe to the currently active checklist for real-time updates
   useEffect(() => {
@@ -155,12 +180,16 @@ export default function Home() {
   }, [toast]);
 
   const handleSaveNewChecklist = useCallback(async (name: string, tasks: Task[] = []) => {
+    if (!user) {
+      toast({ title: "Error", description: "You must be signed in to create a checklist.", variant: "destructive" });
+      return;
+    }
     if (name) {
       try {
         const newChecklist: Omit<Checklist, 'id'> = {
           name: name,
           tasks: tasks,
-          ownerId: USER_ID,
+          ownerId: user.uid,
           documentIds: [],
         };
         const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
@@ -171,7 +200,7 @@ export default function Home() {
         toast({ title: "Error", description: "Failed to create checklist.", variant: "destructive" });
       }
     }
-  }, [toast]);
+  }, [toast, user]);
   
   const handleSwitchChecklist = useCallback((id: string) => {
     setActiveChecklistId(id);
@@ -180,8 +209,6 @@ export default function Home() {
   const handleDeleteChecklist = useCallback(async (id: string) => {
     if (window.confirm("Are you sure you want to delete this checklist? This action cannot be undone.")) {
       try {
-        // The onSnapshot listener for `checklistMetas` will automatically handle
-        // updating the UI to select a new checklist or show the empty state.
         await deleteDoc(doc(db, 'checklists', id));
         toast({ title: "Success", description: "Checklist deleted." });
       } catch (error) {
@@ -197,15 +224,19 @@ export default function Home() {
   };
   
   const handleOverwriteChecklist = useCallback(async (checklistId: string, name: string, tasks: Task[]) => {
+    if (!user) {
+        toast({ title: "Error", description: "You must be signed in to overwrite a checklist.", variant: "destructive" });
+        return;
+    }
     const checklistToUpdate = {
         id: checklistId,
         name: name,
-        ownerId: USER_ID,
+        ownerId: user.uid,
         tasks: tasks,
     };
     await handleUpdateChecklist(checklistToUpdate);
     toast({ title: "Import Successful", description: `Checklist "${name}" has been overwritten.` });
-  }, [handleUpdateChecklist, toast]);
+  }, [handleUpdateChecklist, toast, user]);
 
   const handleAppendToChecklist = useCallback(async (checklistId: string, tasks: Task[]) => {
     const checklistRef = doc(db, 'checklists', checklistId);
@@ -672,7 +703,7 @@ export default function Home() {
   },[activeChecklist, handleUpdateChecklist]);
 
 
-  if (isLoading && !activeChecklist) {
+  if (isLoading || !user) {
     return <Loading />;
   }
 
@@ -775,6 +806,7 @@ export default function Home() {
         onOpenChange={setIsRemarksSheetOpen}
         onUpdateTask={handleUpdateTask}
         assignees={assignees}
+        userId={user?.uid}
       />
     </div>
   );

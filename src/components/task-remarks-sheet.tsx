@@ -29,12 +29,10 @@ interface TaskRemarksSheetProps {
   onOpenChange: (open: boolean) => void;
   onUpdateTask: (task: Task) => void;
   assignees: string[];
+  userId?: string;
 }
 
-// This is a placeholder for a real user authentication system.
-const USER_ID = "user_123";
-
-export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assignees = [] }: TaskRemarksSheetProps) {
+export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assignees = [], userId }: TaskRemarksSheetProps) {
     const [newRemark, setNewRemark] = useState('');
     const [mentionQuery, setMentionQuery] = useState('');
     const [isMentionPopoverOpen, setIsMentionPopoverOpen] = useState(false);
@@ -64,11 +62,11 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
     }, [open]);
 
     const handleAddRemark = () => {
-        if (!task || !newRemark.trim()) return;
+        if (!task || !newRemark.trim() || !userId) return;
         const remark: Remark = {
             id: `rem_${Date.now()}_${Math.random()}`,
             text: newRemark.trim(),
-            userId: USER_ID,
+            userId: userId,
             timestamp: new Date().toISOString(),
         };
         const updatedTask = {
@@ -217,7 +215,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
                                                     {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
                                                 </p>
                                             </div>
-                                            {remark.userId === USER_ID && editingRemarkId !== remark.id && !isComplete && (
+                                            {remark.userId === userId && editingRemarkId !== remark.id && !isComplete && (
                                                 <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditStart(remark)}>
                                                         <Pencil className="h-3 w-3" />
@@ -269,7 +267,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
                                     onChange={handleRemarkChange}
                                     placeholder={isComplete ? "Task is complete" : "Add a remark..."}
                                     autoComplete="off"
-                                    disabled={isComplete}
+                                    disabled={isComplete || !userId}
                                 />
                              </PopoverAnchor>
                              <PopoverContent className="w-[250px] p-1" align="start">
@@ -287,7 +285,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
                                 </div>
                             </PopoverContent>
                         </Popover>
-                        <Button type="submit" disabled={!newRemark.trim() || isComplete}>
+                        <Button type="submit" disabled={!newRemark.trim() || isComplete || !userId}>
                             <Send className="h-4 w-4" />
                             <span className="sr-only">Send</span>
                         </Button>
