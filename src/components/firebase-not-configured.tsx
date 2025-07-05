@@ -1,8 +1,10 @@
 'use client';
 
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 
-export function FirebaseNotConfigured() {
+export function FirebaseNotConfigured({ missingKeys }: { missingKeys?: string[] }) {
+  const hasMissingKeys = missingKeys && missingKeys.length > 0;
+
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
       <div className="w-full max-w-3xl rounded-lg border-2 border-dashed border-destructive p-6 sm:p-8 text-center">
@@ -10,9 +12,26 @@ export function FirebaseNotConfigured() {
             <AlertCircle className="h-12 w-12 text-destructive" />
         </div>
         <h1 className="mt-4 text-2xl font-bold font-headline text-destructive">Firebase Not Configured</h1>
-        <p className="mt-4 text-muted-foreground">
-          Your application is showing this page because it cannot connect to Firebase. This usually means your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file is missing, incomplete, or incorrect.
-        </p>
+
+        {hasMissingKeys ? (
+          <>
+            <p className="mt-4 text-muted-foreground">
+              Your application cannot connect to Firebase because the following required environment variable(s) are missing in your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file:
+            </p>
+            <div className="mt-4 inline-block bg-destructive/10 p-3 rounded-md text-left">
+                <ul className="list-disc list-inside space-y-1">
+                    {missingKeys.map(key => (
+                        <li key={key} className="font-mono text-sm text-destructive font-semibold">{key}</li>
+                    ))}
+                </ul>
+            </div>
+          </>
+        ) : (
+          <p className="mt-4 text-muted-foreground">
+            Your application is showing this page because it's receiving an error from Firebase. This usually means your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file has incorrect or invalid credentials.
+          </p>
+        )}
+
 
         <div className="mt-6 text-left text-foreground/90 space-y-4">
             <p>
@@ -27,6 +46,9 @@ export function FirebaseNotConfigured() {
                 <strong>3. Copy & Paste Configuration:</strong><br/>
                 Under "SDK setup and configuration", select "Config", and copy the key-value pairs into a file named <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> in your project's root directory.
             </p>
+            <p>
+                <strong>Important:</strong> Double-check that your <code className="bg-muted px-1 py-0.5 rounded text-sm">storageBucket</code> value ends in <code className="bg-muted px-1 py-0.5 rounded text-sm">.appspot.com</code>.
+            </p>
         </div>
 
         <div className="mt-6">
@@ -35,6 +57,7 @@ export function FirebaseNotConfigured() {
             </p>
             <pre className="mt-2 text-left bg-muted/50 p-4 rounded-md text-xs overflow-x-auto">
               <code>
+                GEMINI_API_KEY="AIzaSy...your-key"<br/>
                 NEXT_PUBLIC_FIREBASE_API_KEY="AIzaSy...your-key"<br/>
                 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="your-project.firebaseapp.com"<br/>
                 NEXT_PUBLIC_FIREBASE_PROJECT_ID="your-project-id"<br/>
@@ -46,10 +69,15 @@ export function FirebaseNotConfigured() {
         </div>
         
         <div className="mt-8 bg-red-50 dark:bg-destructive/10 border-l-4 border-destructive p-4 text-left rounded-r-md">
-            <h3 className="font-bold text-destructive">Crucial Final Step</h3>
-            <p className="mt-2 text-sm text-foreground/80 dark:text-foreground/80">
-                After creating or editing the <code className="bg-destructive/10 text-destructive dark:bg-destructive/20 dark:text-destructive font-mono px-1 py-0.5 rounded">.env</code> file, you <strong>must</strong> stop your development server (press <code className="bg-destructive/10 text-destructive dark:bg-destructive/20 dark:text-destructive font-mono px-1 py-0.5 rounded">Ctrl+C</code> in the terminal) and restart it for the changes to take effect.
-            </p>
+            <div className='flex items-start gap-4'>
+                <RefreshCw className="h-6 w-6 text-destructive flex-shrink-0 mt-1" />
+                <div>
+                    <h3 className="font-bold text-destructive">Crucial Step for Firebase Studio</h3>
+                    <p className="mt-2 text-sm text-foreground/80 dark:text-foreground/80">
+                        After you create or edit the <code className="bg-destructive/10 text-destructive dark:bg-destructive/20 dark:text-destructive font-mono px-1 py-0.5 rounded">.env</code> file, you <strong>must</strong> restart the backend in Firebase Studio for the changes to apply. Look for a "Restart Backend" button or similar control in the Studio interface.
+                    </p>
+                </div>
+            </div>
         </div>
 
       </div>

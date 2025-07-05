@@ -6,7 +6,7 @@ import { TaskTable } from '@/components/task-table';
 import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
-import { isFirebaseConfigured, db, storage, auth } from '@/lib/firebase';
+import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth } from '@/lib/firebase';
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import { ref as storageRef, uploadBytes, deleteObject } from 'firebase/storage';
 import {
@@ -59,7 +59,7 @@ export default function Home() {
 
   // If Firebase is not configured statically, show guidance.
   if (!isFirebaseConfigured) {
-    return <FirebaseNotConfigured />;
+    return <FirebaseNotConfigured missingKeys={missingFirebaseConfigKeys} />;
   }
 
   // Effect to handle anonymous authentication
