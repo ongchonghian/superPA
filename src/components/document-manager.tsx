@@ -3,10 +3,12 @@
 import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { File, Info, Loader2, Trash2, UploadCloud } from 'lucide-react';
+import { File, Info, Loader2, Trash2, UploadCloud, CheckCircle, AlertTriangle, PlayCircle } from 'lucide-react';
 import type { Document } from '@/lib/types';
 import { Input } from './ui/input';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
+import { auth, storage } from '@/lib/firebase';
+import { ref as storageRef, uploadString, deleteObject } from 'firebase/storage';
 
 interface DocumentManagerProps {
   documents: Document[];
@@ -18,6 +20,13 @@ interface DocumentManagerProps {
 export function DocumentManager({ documents, onUpload, onDelete, isUploading }: DocumentManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
+
+  const [isDiagnosing, setIsDiagnosing] = useState(false);
+  const [diagnosticResult, setDiagnosticResult] = useState<{
+    success: boolean;
+    message: string;
+    details?: string;
+  } | null>(null);
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files.length > 0) {
@@ -42,6 +51,73 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
         await onDelete(docId);
     }
   }
+
+  const runDiagnosticTest = async () => {
+    setIsDiagnosing(true);
+    setDiagnosticResult(null);
+
+    if (!storage || !auth) {
+      setDiagnosticResult({
+        success: false,
+        message: 'Firebase Not Initialized',
+        details: 'The Firebase storage or auth service could not be found. Check your .env.local file and restart the backend.',
+      });
+      setIsDiagnosing(false);
+      return;
+    }
+
+    if (!auth.currentUser) {
+      setDiagnosticResult({
+        success: false,
+        message: 'Not Authenticated',
+        details: 'No user is signed in. The app must authenticate before it can upload files. Please refresh the page.',
+      });
+      setIsDiagnosing(false);
+      return;
+    }
+
+    const testFilePath = `diagnostics/upload-test-${auth.currentUser.uid}-${Date.now()}.txt`;
+    const testFileRef = storageRef(storage, testFilePath);
+    const testContent = `This is a diagnostic file uploaded by user ${auth.currentUser.uid} at ${new Date().toISOString()}.`;
+
+    try {
+      await uploadString(testFileRef, testContent, 'raw');
+      
+      setDiagnosticResult({
+        success: true,
+        message: 'Upload Successful!',
+        details: `A test file was successfully written to your Firebase Storage bucket at: ${testFilePath}. The file was deleted after the test.`,
+      });
+
+      // Clean up the test file
+      try {
+        await deleteObject(testFileRef);
+      } catch (deleteError) {
+        console.warn('Diagnostic test file cleanup failed. You may need to delete it manually from your storage bucket.', deleteError);
+      }
+
+    } catch (error: any) {
+      console.error('Diagnostic upload failed:', error);
+      let message = 'Upload Failed';
+      let details = error.message;
+
+      if (error.code === 'storage/unauthorized') {
+        message = 'Permission Denied';
+        details = "Your security rules are preventing the upload. Ensure your Storage security rules allow writes for authenticated users: `allow write: if request.auth != null;`";
+      } else if (error.code === 'storage/object-not-found' && error.message.includes('storage/unauthorized')) {
+         message = 'Permission Denied or Bucket Not Found';
+         details = "Please check that your Storage security rules are correct AND that the `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` in your `.env.local` file is correct and exists."
+      }
+
+      setDiagnosticResult({
+        success: false,
+        message: message,
+        details: details,
+      });
+    } finally {
+      setIsDiagnosing(false);
+    }
+  };
 
   return (
     <Card className="mb-6 no-print">
@@ -107,11 +183,31 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
         )}
          <Alert variant="default" className="mt-6 text-sm">
             <Info className="h-4 w-4" />
-            <AlertTitle className="font-semibold">Still having trouble uploading?</AlertTitle>
-            <AlertDescription>
-                <p className="mt-1">
-                    If uploads are failing, please ensure you have enabled Firebase Storage in your Firebase Console and that you have updated your security rules to allow writes. A page refresh after updating rules can sometimes help.
+            <AlertTitle className="font-semibold">Having trouble uploading?</AlertTitle>
+            <AlertDescription className="mt-2 space-y-4">
+                <p>
+                    If uploads are failing, you can run a quick diagnostic test to check your connection and permissions with Firebase Storage.
                 </p>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <Button variant="secondary" onClick={runDiagnosticTest} disabled={isDiagnosing}>
+                        {isDiagnosing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 h-4 w-4" />}
+                        {isDiagnosing ? 'Running Test...' : 'Run Upload Test'}
+                    </Button>
+                </div>
+
+                {diagnosticResult && (
+                    <div className={`mt-4 p-3 rounded-md text-xs ${diagnosticResult.success ? 'bg-green-100 dark:bg-green-900/50' : 'bg-red-100 dark:bg-red-900/50'}`}>
+                        <div className={`flex items-start gap-2 font-bold ${diagnosticResult.success ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
+                           {diagnosticResult.success ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+                           {diagnosticResult.message}
+                        </div>
+                        {diagnosticResult.details && (
+                           <p className={`mt-2 ${diagnosticResult.success ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                                {diagnosticResult.details}
+                            </p>
+                        )}
+                    </div>
+                )}
             </AlertDescription>
         </Alert>
       </CardContent>
