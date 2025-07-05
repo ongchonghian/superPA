@@ -6,7 +6,8 @@ import { TaskTable } from '@/components/task-table';
 import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
-import { db } from '@/lib/firebase';
+import { isFirebaseConfigured, db, auth } from '@/lib/firebase';
+import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import {
   collection,
   query,
@@ -21,7 +22,7 @@ import {
   arrayRemove,
   writeBatch,
 } from 'firebase/firestore';
-import { getAuth, onAuthStateChanged, signInAnonymously, type User } from 'firebase/auth';
+import { onAuthStateChanged, signInAnonymously, type User } from 'firebase/auth';
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
@@ -63,9 +64,14 @@ export default function Home() {
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
 
+  // If Firebase is not configured, show a helpful message and stop.
+  if (!isFirebaseConfigured) {
+    return <FirebaseNotConfigured />;
+  }
+
   // Effect to handle anonymous user authentication
   useEffect(() => {
-    const auth = getAuth();
+    if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       if (currentUser) {
         setUser(currentUser);
@@ -86,7 +92,7 @@ export default function Home() {
 
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
-    if (!user) {
+    if (!user || !db) {
       setChecklistMetas([]);
       setIsLoading(false);
       return;
@@ -123,7 +129,7 @@ export default function Home() {
 
   // Effect to subscribe to the currently active checklist for real-time updates
   useEffect(() => {
-    if (!activeChecklistId) {
+    if (!activeChecklistId || !db) {
       setActiveChecklist(null);
       setDocuments([]);
       return;
@@ -151,7 +157,7 @@ export default function Home() {
   
   // Effect to subscribe to documents associated with the active checklist
   useEffect(() => {
-    if (!activeChecklist || !activeChecklist.documentIds || activeChecklist.documentIds.length === 0) {
+    if (!activeChecklist || !activeChecklist.documentIds || activeChecklist.documentIds.length === 0 || !db) {
       setDocuments([]);
       return;
     }
@@ -170,7 +176,7 @@ export default function Home() {
 
   const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
     const { id, ...data } = updatedChecklist;
-    const checklistRef = doc(db, 'checklists', id);
+    const checklistRef = doc(db!, 'checklists', id);
     try {
       await updateDoc(checklistRef, data);
     } catch (error) {
@@ -192,7 +198,7 @@ export default function Home() {
           ownerId: user.uid,
           documentIds: [],
         };
-        const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
+        const docRef = await addDoc(collection(db!, 'checklists'), newChecklist);
         setActiveChecklistId(docRef.id);
         toast({ title: "Success", description: `Checklist "${name}" created.` });
       } catch (error) {
@@ -209,7 +215,7 @@ export default function Home() {
   const handleDeleteChecklist = useCallback(async (id: string) => {
     if (window.confirm("Are you sure you want to delete this checklist? This action cannot be undone.")) {
       try {
-        await deleteDoc(doc(db, 'checklists', id));
+        await deleteDoc(doc(db!, 'checklists', id));
         toast({ title: "Success", description: "Checklist deleted." });
       } catch (error) {
         console.error("Error deleting checklist: ", error);
@@ -239,7 +245,7 @@ export default function Home() {
   }, [handleUpdateChecklist, toast, user]);
 
   const handleAppendToChecklist = useCallback(async (checklistId: string, tasks: Task[]) => {
-    const checklistRef = doc(db, 'checklists', checklistId);
+    const checklistRef = doc(db!, 'checklists', checklistId);
     try {
         const docSnap = await getDoc(checklistRef);
         if (docSnap.exists()) {
@@ -581,7 +587,7 @@ export default function Home() {
   }, [activeChecklist]);
 
   const handleUploadDocuments = useCallback(async (files: FileList) => {
-    if (!activeChecklist) {
+    if (!activeChecklist || !db) {
         toast({ title: "Error", description: "No active checklist selected.", variant: "destructive" });
         return;
     }
@@ -628,7 +634,7 @@ export default function Home() {
   }, [activeChecklist, toast]);
 
   const handleDeleteDocument = useCallback(async (documentId: string) => {
-    if (!activeChecklist) return;
+    if (!activeChecklist || !db) return;
 
     const docRef = doc(db, 'documents', documentId);
     try {
