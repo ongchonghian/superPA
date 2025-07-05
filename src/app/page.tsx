@@ -6,7 +6,7 @@ import { TaskTable } from '@/components/task-table';
 import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
-import { db, storage } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import {
   collection,
   query,
@@ -21,7 +21,6 @@ import {
   arrayRemove,
   writeBatch,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytes, deleteObject } from 'firebase/storage';
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
@@ -35,6 +34,16 @@ import { DocumentManager } from '@/components/document-manager';
 // This is a placeholder for a real user authentication system.
 // In a real app, you would get this from your auth provider.
 const USER_ID = "user_123";
+
+// Helper to convert a File to a Base64 Data URI
+const fileToDataUri = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+};
 
 export default function Home() {
   const { toast } = useToast();
@@ -463,7 +472,7 @@ export default function Home() {
         .filter(doc => doc.status === 'ready')
         .map(doc => ({
             fileName: doc.fileName,
-            storagePath: doc.storagePath,
+            fileDataUri: doc.fileDataUri,
         }));
 
       const result = await suggestChecklistNextSteps({ 
@@ -542,53 +551,48 @@ export default function Home() {
 
   const handleUploadDocuments = useCallback(async (files: FileList) => {
     if (!activeChecklist) {
-      toast({ title: "Error", description: "No active checklist selected.", variant: "destructive" });
-      return;
-    }
-
-    if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || !process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) {
-      toast({
-          title: "Firebase Not Configured",
-          description: "Your Firebase storage is not configured. Please check your environment variables to enable file uploads.",
-          variant: "destructive",
-      });
-      return;
+        toast({ title: "Error", description: "No active checklist selected.", variant: "destructive" });
+        return;
     }
 
     setIsUploading(true);
     const uploadToast = toast({ title: "Uploading...", description: `Starting upload of ${files.length} document(s).` });
 
     try {
-      const uploadPromises = Array.from(files).map(async (file) => {
-        const newDocRef = doc(collection(db, "documents"));
-        const storagePath = `documents/${activeChecklist.id}/${newDocRef.id}-${file.name}`;
-        const fileRef = storageRef(storage, storagePath);
+        const uploadPromises = Array.from(files).map(async (file) => {
+            if (file.size > 1024 * 1024) { // 1MB limit for Firestore documents
+                throw new Error(`File "${file.name}" is too large. The maximum size is 1MB.`);
+            }
 
-        await uploadBytes(fileRef, file);
+            const dataUri = await fileToDataUri(file);
+            
+            const newDocRef = doc(collection(db, "documents"));
+            const batch = writeBatch(db);
 
-        const batch = writeBatch(db);
-        batch.set(newDocRef, {
-            checklistId: activeChecklist.id,
-            fileName: file.name,
-            storagePath: storagePath,
-            status: 'ready',
-            createdAt: new Date().toISOString(),
+            batch.set(newDocRef, {
+                checklistId: activeChecklist.id,
+                fileName: file.name,
+                fileDataUri: dataUri,
+                status: 'ready',
+                createdAt: new Date().toISOString(),
+            });
+
+            const checklistRef = doc(db, 'checklists', activeChecklist.id);
+            batch.update(checklistRef, {
+                documentIds: arrayUnion(newDocRef.id)
+            });
+
+            await batch.commit();
         });
-        const checklistRef = doc(db, 'checklists', activeChecklist.id);
-        batch.update(checklistRef, {
-            documentIds: arrayUnion(newDocRef.id)
-        });
-        await batch.commit();
-      });
 
-      await Promise.all(uploadPromises);
+        await Promise.all(uploadPromises);
 
-      uploadToast.update({ id: uploadToast.id, title: "Upload complete", description: `${files.length} document(s) are ready for AI context.` });
-    } catch (error) {
-      console.error("Error uploading documents:", error);
-      uploadToast.update({ id: uploadToast.id, title: "Upload Failed", description: "Could not upload documents. Please try again.", variant: "destructive" });
+        uploadToast.update({ id: uploadToast.id, title: "Upload complete", description: `${files.length} document(s) are ready for AI context.` });
+    } catch (error: any) {
+        console.error("Error uploading documents:", error);
+        uploadToast.update({ id: uploadToast.id, title: "Upload Failed", description: error.message || "Could not upload documents. Please try again.", variant: "destructive" });
     } finally {
-      setIsUploading(false);
+        setIsUploading(false);
     }
   }, [activeChecklist, toast]);
 
@@ -597,31 +601,22 @@ export default function Home() {
 
     const docRef = doc(db, 'documents', documentId);
     try {
-      const docSnap = await getDoc(docRef);
-      if (!docSnap.exists()) {
-        toast({ title: "Error", description: "Document not found.", variant: "destructive" });
-        return;
-      }
+        const batch = writeBatch(db);
+        batch.delete(docRef);
 
-      const documentData = docSnap.data() as Document;
-      const fileStorageRef = storageRef(storage, documentData.storagePath);
+        const checklistRef = doc(db, 'checklists', activeChecklist.id);
+        batch.update(checklistRef, {
+            documentIds: arrayRemove(documentId)
+        });
 
-      const batch = writeBatch(db);
-      batch.delete(docRef);
-      const checklistRef = doc(db, 'checklists', activeChecklist.id);
-      batch.update(checklistRef, {
-        documentIds: arrayRemove(documentId)
-      });
-      await batch.commit();
+        await batch.commit();
 
-      await deleteObject(fileStorageRef);
-
-      toast({ title: "Success", description: "Document deleted." });
+        toast({ title: "Success", description: "Document deleted." });
     } catch (error) {
-      console.error("Error deleting document:", error);
-      toast({ title: "Error", description: "Failed to delete document.", variant: "destructive" });
+        console.error("Error deleting document:", error);
+        toast({ title: "Error", description: "Failed to delete document.", variant: "destructive" });
     }
-  }, [activeChecklist, toast]);
+}, [activeChecklist, toast]);
   
   const progress = useMemo(() => {
     if (!activeChecklist || activeChecklist.tasks.length === 0) return 0;
@@ -633,6 +628,28 @@ export default function Home() {
     if (!activeChecklist) return [];
     return [...new Set(activeChecklist.tasks.map(t => t.assignee))];
   }, [activeChecklist]);
+
+  useEffect(() => {
+    const handleOpenTaskDialog = (event: Event) => {
+      const customEvent = event as CustomEvent<Partial<Task>>;
+      setDialogTask(customEvent.detail);
+      setIsTaskDialogOpen(true);
+    };
+
+    const handleOpenRemarks = (event: Event) => {
+      const customEvent = event as CustomEvent<Task>;
+      setRemarksTask(customEvent.detail);
+      setIsRemarksSheetOpen(true);
+    };
+
+    window.addEventListener('open-task-dialog', handleOpenTaskDialog);
+    window.addEventListener('open-remarks', handleOpenRemarks);
+
+    return () => {
+      window.removeEventListener('open-task-dialog', handleOpenTaskDialog);
+      window.removeEventListener('open-remarks', handleOpenRemarks);
+    };
+  }, []);
 
   const handleUpdateTask = useCallback((taskToUpdate: Task) => {
     if (!activeChecklist) return;

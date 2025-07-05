@@ -21,7 +21,7 @@ const TaskAnalysisSchema = z.object({
 
 const DocumentContextSchema = z.object({
   fileName: z.string(),
-  storagePath: z.string().describe('The path to the document in Firebase Storage.'),
+  fileDataUri: z.string().describe("A document file, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."),
 });
 
 const SuggestChecklistNextStepsInputSchema = z.object({
@@ -55,28 +55,19 @@ export async function suggestChecklistNextSteps(input: SuggestChecklistNextSteps
   return suggestChecklistNextStepsFlow(input);
 }
 
-
-const PromptInputSchema = SuggestChecklistNextStepsInputSchema.extend({
-    documentsWithUris: z.array(z.object({
-        fileName: z.string(),
-        uri: z.string()
-    })).optional()
-});
-
-
 const prompt = ai.definePrompt({
   name: 'suggestChecklistNextStepsPrompt',
-  input: {schema: PromptInputSchema},
+  input: {schema: SuggestChecklistNextStepsInputSchema},
   output: {schema: SuggestChecklistNextStepsOutputSchema},
   prompt: `You are an AI assistant that analyzes a list of tasks and their discussion histories to identify sub-tasks that can be automated. Your goal is to propose these automatable sub-tasks as "AI To-Dos".
 
-{{#if documentsWithUris}}
+{{#if contextDocuments}}
 You have been provided with context documents. These documents are the primary source of truth for the project. Analyze them to understand the project's goals, scope, and technical details. Use this deep understanding to inform your suggestions and make them highly relevant and specific.
 
 --- CONTEXT DOCUMENTS START ---
-{{#each documentsWithUris}}
+{{#each contextDocuments}}
 ## Document: {{{fileName}}}
-{{{media url=uri}}}
+{{{media url=fileDataUri}}}
 
 ---
 {{/each}}
@@ -124,22 +115,7 @@ const suggestChecklistNextStepsFlow = ai.defineFlow(
     outputSchema: SuggestChecklistNextStepsOutputSchema,
   },
   async (input) => {
-    const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-    if (input.contextDocuments && !bucket) {
-        throw new Error("Firebase Storage bucket name is not configured in environment variables. Cannot process documents.");
-    }
-
-    const documentsWithUris = input.contextDocuments?.map(doc => ({
-        ...doc,
-        uri: `gs://${bucket}/${doc.storagePath}`
-    }));
-
-    const promptInput = {
-        ...input,
-        documentsWithUris: documentsWithUris,
-    };
-    
-    const {output} = await prompt(promptInput);
+    const {output} = await prompt(input);
     return output!;
   }
 );
