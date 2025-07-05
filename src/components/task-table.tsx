@@ -36,8 +36,6 @@ import {
 } from 'lucide-react';
 import type { Checklist, Task, TaskPriority, TaskStatus } from '@/lib/types';
 import { format, parseISO, formatDistanceToNow, isSameDay } from 'date-fns';
-import { TaskDialog } from './task-dialog';
-import { TaskRemarksSheet } from './task-remarks-sheet';
 import {PRIORITIES, STATUSES} from '@/lib/data';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -46,7 +44,7 @@ type SortKey = keyof Task | '';
 
 interface TaskTableProps {
   checklist: Checklist;
-  onUpdate: (checklist: Checklist) => void;
+  onUpdate: (checklist: Partial<Checklist> & { id: string }) => void;
 }
 
 const statusColors: { [key in TaskStatus]: string } = {
@@ -106,21 +104,6 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
     status: 'all',
     priority: 'all',
   });
-  const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
-  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
-  const [remarksTask, setRemarksTask] = useState<Task | null>(null);
-  const [isRemarksSheetOpen, setIsRemarksSheetOpen] = useState(false);
-
-  useEffect(() => {
-    if (isRemarksSheetOpen && remarksTask) {
-      const updatedTask = checklist.tasks.find(t => t.id === remarksTask.id);
-      if (updatedTask) {
-        setRemarksTask(updatedTask);
-      }
-    }
-  }, [checklist, remarksTask, isRemarksSheetOpen]);
-
-  const assignees = useMemo(() => [...new Set(checklist.tasks.map(t => t.assignee))], [checklist.tasks]);
 
   const filteredAndSortedTasks = useMemo(() => {
     let tasks = [...checklist.tasks];
@@ -230,6 +213,16 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
 
     const updatedTask = { ...task, status: newStatus, remarks: updatedRemarks };
     handleUpdateTask(updatedTask);
+  };
+
+  const openTaskDialog = (task: Partial<Task>) => {
+    const event = new CustomEvent('open-task-dialog', { detail: task });
+    window.dispatchEvent(event);
+  };
+  
+  const openRemarksSheet = (task: Task) => {
+    const event = new CustomEvent('open-remarks', { detail: task });
+    window.dispatchEvent(event);
   };
   
   return (
@@ -368,10 +361,10 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => {setDialogTask(task); setIsTaskDialogOpen(true);}} disabled={task.status === 'complete'}>
+                          <DropdownMenuItem onSelect={() => openTaskDialog(task)} disabled={task.status === 'complete'}>
                               Edit Task
                           </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => {setRemarksTask(task); setIsRemarksSheetOpen(true);}}>
+                          <DropdownMenuItem onSelect={() => openRemarksSheet(task)}>
                               <MessageSquare className="mr-2 h-4 w-4" />
                               {task.status === 'complete' ? 'View Remarks' : 'Add Remark'}
                           </DropdownMenuItem>
@@ -396,24 +389,10 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         </Table>
       </div>
       <div className="flex justify-end no-print">
-        <Button onClick={() => { setDialogTask({}); setIsTaskDialogOpen(true); }}>
+        <Button onClick={() => openTaskDialog({})}>
             <Plus className="mr-2 h-4 w-4" /> Add Task
         </Button>
       </div>
-      
-      <TaskDialog
-        task={dialogTask}
-        open={isTaskDialogOpen}
-        onOpenChange={setIsTaskDialogOpen}
-        onSave={handleSaveTask}
-      />
-      <TaskRemarksSheet
-        task={remarksTask}
-        open={isRemarksSheetOpen}
-        onOpenChange={setIsRemarksSheetOpen}
-        onUpdateTask={handleUpdateTask}
-        assignees={assignees}
-      />
     </div>
   );
 }

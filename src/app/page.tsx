@@ -80,7 +80,12 @@ export default function Home() {
     }
     const unsubscribe = onSnapshot(doc(db, 'checklists', activeChecklistId), (doc) => {
       if (doc.exists()) {
-        setActiveChecklist({ id: doc.id, ...doc.data() } as Checklist);
+        const newChecklist = { id: doc.id, ...doc.data() } as Checklist;
+        // Invalidate AI suggestions if checklist has changed
+        if (JSON.stringify(activeChecklist?.tasks) !== JSON.stringify(newChecklist.tasks)) {
+          setAiAnalysisResult(null);
+        }
+        setActiveChecklist(newChecklist);
       } else {
         setActiveChecklist(null);
       }
@@ -90,7 +95,7 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [activeChecklistId, toast]);
+  }, [activeChecklistId, toast, activeChecklist]);
   
 
   const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
@@ -487,12 +492,55 @@ export default function Home() {
         description: "The suggestion has been added to the task's remarks.",
     });
   }, [activeChecklist, handleUpdateChecklist, toast]);
+
+  const handleProvideInfo = useCallback((taskId: string) => {
+    if (!activeChecklist) return;
+    const task = activeChecklist.tasks.find(t => t.id === taskId);
+    if (task) {
+      setIsAiDialogOpen(false); // Close the AI dialog
+      // Use the existing state setters for the remarks sheet
+      const event = new CustomEvent('open-remarks', { detail: task });
+      window.dispatchEvent(event);
+    }
+  }, [activeChecklist]);
   
   const progress = useMemo(() => {
     if (!activeChecklist || activeChecklist.tasks.length === 0) return 0;
     const completedTasks = activeChecklist.tasks.filter(t => t.status === 'complete').length;
     return (completedTasks / activeChecklist.tasks.length) * 100;
   }, [activeChecklist]);
+
+  // States for remarks sheet, to be controlled from multiple places
+  const [remarksTask, setRemarksTask] = useState<Task | null>(null);
+  const [isRemarksSheetOpen, setIsRemarksSheetOpen] = useState(false);
+
+  useEffect(() => {
+    const handleOpenRemarks = (event: Event) => {
+      const customEvent = event as CustomEvent<Task>;
+      setRemarksTask(customEvent.detail);
+      setIsRemarksSheetOpen(true);
+    };
+
+    const handleOpenTask = (event: Event) => {
+        const customEvent = event as CustomEvent<Partial<Task>>;
+        const eventTask = customEvent.detail;
+        const taskToOpen = activeChecklist?.tasks.find(t => t.id === eventTask.id) || eventTask;
+        setDialogTask(taskToOpen);
+        setIsTaskDialogOpen(true);
+    }
+    
+    window.addEventListener('open-remarks', handleOpenRemarks);
+    window.addEventListener('open-task-dialog', handleOpenTask);
+    
+    return () => {
+      window.removeEventListener('open-remarks', handleOpenRemarks);
+      window.removeEventListener('open-task-dialog', handleOpenTask);
+    };
+  }, [activeChecklist]);
+  
+  // States for task dialog
+  const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
 
   if (isLoading && !activeChecklistId) {
     return <Loading />;
@@ -575,6 +623,35 @@ export default function Home() {
         tasks={activeChecklist?.tasks || []}
         onAddSuggestion={handleAddSuggestionAsRemark}
         onRegenerate={fetchAiSuggestions}
+        onProvideInfo={handleProvideInfo}
+      />
+      <TaskDialog
+        task={dialogTask}
+        open={isTaskDialogOpen}
+        onOpenChange={setIsTaskDialogOpen}
+        onSave={(taskToSave) => {
+          const exists = activeChecklist?.tasks.some(t => t.id === taskToSave.id);
+          if (exists) {
+            const existingTask = activeChecklist!.tasks.find(t => t.id === taskToSave.id)!;
+            const updatedTask = { ...existingTask, ...taskToSave };
+            const newTasks = activeChecklist!.tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
+            handleUpdateChecklist({ ...activeChecklist!, tasks: newTasks });
+          } else {
+            const newTask = {...taskToSave, remarks: []};
+            const newTasks = [...(activeChecklist?.tasks || []), newTask];
+            handleUpdateChecklist({ ...activeChecklist!, tasks: newTasks });
+          }
+        }}
+      />
+      <TaskRemarksSheet
+        task={remarksTask}
+        open={isRemarksSheetOpen}
+        onOpenChange={setIsRemarksSheetOpen}
+        onUpdateTask={(taskToUpdate) => {
+            const newTasks = activeChecklist!.tasks.map(t => (t.id === taskToUpdate.id ? taskToUpdate : t));
+            handleUpdateChecklist({ ...activeChecklist!, tasks: newTasks });
+        }}
+        assignees={useMemo(() => [...new Set(activeChecklist?.tasks.map(t => t.assignee) || [])], [activeChecklist])}
       />
     </div>
   );
