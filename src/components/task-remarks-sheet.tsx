@@ -48,6 +48,8 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask }: Tas
 
     if (!task) return null;
 
+    const isComplete = task.status === 'complete';
+
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
             <SheetContent className="sm:max-w-lg w-[90vw] flex flex-col p-4 sm:p-6">
@@ -87,10 +89,11 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask }: Tas
                         <Input 
                             value={newRemark}
                             onChange={e => setNewRemark(e.target.value)}
-                            placeholder="Add a remark..."
+                            placeholder={isComplete ? "Task is complete" : "Add a remark..."}
                             autoComplete="off"
+                            disabled={isComplete}
                         />
-                        <Button type="submit" disabled={!newRemark.trim()}>
+                        <Button type="submit" disabled={!newRemark.trim() || isComplete}>
                             <Send className="h-4 w-4" />
                             <span className="sr-only">Send</span>
                         </Button>

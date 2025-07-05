@@ -35,12 +35,13 @@ import {
   WandSparkles,
 } from 'lucide-react';
 import type { Checklist, Task, TaskPriority, TaskStatus } from '@/lib/types';
-import { format, parseISO, formatDistanceToNow } from 'date-fns';
+import { format, parseISO, formatDistanceToNow, isSameDay } from 'date-fns';
 import { TaskDialog } from './task-dialog';
 import { AiSuggestionDialog } from './ai-suggestion-dialog';
 import { TaskRemarksSheet } from './task-remarks-sheet';
 import {PRIORITIES, STATUSES} from '@/lib/data';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type SortKey = keyof Task | '';
 
@@ -63,13 +64,10 @@ const priorityColors: { [key in TaskPriority]: string } = {
 
 const RemarkDisplay = ({ text }: { text: string }) => {
   const newAiTodoMatch = text.match(/^\[ai-todo\|(pending|running|completed|failed)\]\s*(.*)/s);
-  const legacyAiTodoMatch = text.match(/^TODO \(Assigned to AI\):\s*(.*)/s);
 
-  const isAiTodo = newAiTodoMatch || legacyAiTodoMatch;
-
-  if (isAiTodo) {
-    const status = newAiTodoMatch ? newAiTodoMatch[1] : 'pending';
-    const todoText = (newAiTodoMatch ? newAiTodoMatch[2] : legacyAiTodoMatch![1]).trim();
+  if (newAiTodoMatch) {
+    const status = newAiTodoMatch[1];
+    const todoText = newAiTodoMatch[2].trim();
     
     const statusPill = (
         <span className={`capitalize px-1.5 py-0.5 text-xs rounded-full font-medium ${
@@ -174,6 +172,59 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         onUpdate({ ...checklist, tasks: newTasks });
     }
   };
+
+  const handleTaskCompletionChange = (task: Task, isComplete: boolean) => {
+    const newStatus = isComplete ? 'complete' : 'pending';
+    if (task.status === newStatus) return;
+
+    let updatedRemarks = [...task.remarks];
+    const systemRemarkText = "Marked as completed.";
+    const systemRemarkTextIncomplete = "Marked as incomplete.";
+
+    if (isComplete) {
+      // Task is being marked as complete
+      updatedRemarks.push({
+        id: `rem_${Date.now()}_${Math.random()}`,
+        text: systemRemarkText,
+        userId: 'system',
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      // Task is being marked as incomplete
+      const completionRemarkIndex = updatedRemarks.findIndex(
+        (r) => r.text === systemRemarkText && r.userId === 'system'
+      );
+
+      if (completionRemarkIndex > -1) {
+        const completionRemark = updatedRemarks[completionRemarkIndex];
+        const remarkDate = parseISO(completionRemark.timestamp);
+        
+        if (isSameDay(remarkDate, new Date())) {
+          // If unchecked on the same day, remove the "Marked as completed." remark.
+          updatedRemarks.splice(completionRemarkIndex, 1);
+        } else {
+          // If unchecked on a different day, add "Marked as incomplete."
+          updatedRemarks.push({
+            id: `rem_${Date.now()}_${Math.random()}`,
+            text: systemRemarkTextIncomplete,
+            userId: 'system',
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } else {
+         // This case handles if it was somehow marked complete without the system remark.
+         updatedRemarks.push({
+            id: `rem_${Date.now()}_${Math.random()}`,
+            text: systemRemarkTextIncomplete,
+            userId: 'system',
+            timestamp: new Date().toISOString(),
+        });
+      }
+    }
+
+    const updatedTask = { ...task, status: newStatus, remarks: updatedRemarks };
+    handleUpdateTask(updatedTask);
+  };
   
   return (
     <div className="space-y-4">
@@ -206,6 +257,7 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-px p-2"></TableHead>
               <TableHead className="w-[40%]">
                 <Button variant="ghost" onClick={() => handleSort('description')}>
                   Task <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -233,7 +285,15 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
           <TableBody>
             {filteredAndSortedTasks.length > 0 ? (
               filteredAndSortedTasks.map(task => (
-                <TableRow key={task.id} className={task.status === 'complete' ? 'bg-muted/50' : ''}>
+                <TableRow key={task.id} data-state={task.status === 'complete' ? 'completed' : 'pending'}>
+                  <TableCell className="p-2 align-top">
+                     <Checkbox
+                        id={`complete-${task.id}`}
+                        aria-label={`Mark task ${task.description} as complete`}
+                        checked={task.status === 'complete'}
+                        onCheckedChange={(isChecked) => handleTaskCompletionChange(task, !!isChecked)}
+                      />
+                  </TableCell>
                   <TableCell className={`font-medium align-top ${task.status === 'complete' ? 'text-muted-foreground' : ''}`}>
                     <div className={task.status === 'complete' ? 'line-through' : ''}>{task.description}</div>
                     {task.remarks && task.remarks.length > 0 && (
@@ -279,14 +339,14 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => {setDialogTask(task); setIsTaskDialogOpen(true);}}>
+                        <DropdownMenuItem onSelect={() => {setDialogTask(task); setIsTaskDialogOpen(true);}} disabled={task.status === 'complete'}>
                             Edit Task
                         </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => {setRemarksTask(task); setIsRemarksSheetOpen(true);}}>
+                        <DropdownMenuItem onSelect={() => {setRemarksTask(task); setIsRemarksSheetOpen(true);}} disabled={task.status === 'complete'}>
                             <MessageSquare className="mr-2 h-4 w-4" />
                             Add Remark
                         </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => {setAiSuggestionTask(task); setIsAiDialogOpen(true);}}>
+                        <DropdownMenuItem onSelect={() => {setAiSuggestionTask(task); setIsAiDialogOpen(true);}} disabled={task.status === 'complete'}>
                           <WandSparkles className="mr-2 h-4 w-4" />
                           Suggest Next Steps
                         </DropdownMenuItem>
@@ -301,7 +361,7 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="h-24 text-center">
+                <TableCell colSpan={7} className="h-24 text-center">
                   No tasks found.
                 </TableCell>
               </TableRow>
@@ -334,5 +394,4 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
       />
     </div>
   );
-
-    
+}
