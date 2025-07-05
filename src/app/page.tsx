@@ -38,6 +38,7 @@ export default function Home() {
   const { toast } = useToast();
   const [userId, setUserId] = useState<string | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isConfigError, setIsConfigError] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
@@ -56,8 +57,8 @@ export default function Home() {
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
 
-  // If Firebase is not configured, show a helpful message and stop.
-  if (!isFirebaseConfigured) {
+  // If Firebase is not configured statically or a runtime config error occurs, show guidance.
+  if (!isFirebaseConfigured || isConfigError) {
     return <FirebaseNotConfigured />;
   }
   
@@ -75,13 +76,17 @@ export default function Home() {
         try {
           const userCredential = await signInAnonymously(auth);
           setUserId(userCredential.user.uid);
-        } catch (error) {
+        } catch (error: any) {
           console.error("Anonymous sign-in failed: ", error);
-          toast({
-            title: "Authentication Failed",
-            description: "Could not connect to the service. Please try again later.",
-            variant: "destructive",
-          });
+          if (error.code === 'auth/configuration-not-found') {
+            setIsConfigError(true);
+          } else {
+            toast({
+              title: "Authentication Failed",
+              description: "Could not connect to the service. Please try again later.",
+              variant: "destructive",
+            });
+          }
         } finally {
           setIsAuthLoading(false);
         }
