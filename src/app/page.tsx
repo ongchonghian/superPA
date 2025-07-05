@@ -16,8 +16,10 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  getDoc,
 } from 'firebase/firestore';
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
+import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
 
 // This is a placeholder for a real user authentication system.
@@ -33,6 +35,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isNewChecklistDialogOpen, setIsNewChecklistDialogOpen] = useState(false);
   const [importMode, setImportMode] = useState<'new' | 'current' | null>(null);
+  const [importConflict, setImportConflict] = useState<{ conflictingId: string; name: string; tasks: Task[] } | null>(null);
 
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
@@ -79,8 +82,7 @@ export default function Home() {
     return () => unsubscribe();
   }, [activeChecklistId, toast]);
 
-  const handleUpdateChecklist = useCallback(async (updatedChecklist: Checklist) => {
-    if (!updatedChecklist.id) return;
+  const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
     const { id, ...data } = updatedChecklist;
     const checklistRef = doc(db, 'checklists', id);
     try {
@@ -91,12 +93,12 @@ export default function Home() {
     }
   }, [toast]);
 
-  const handleSaveNewChecklist = useCallback(async (name: string) => {
+  const handleSaveNewChecklist = useCallback(async (name: string, tasks: Task[] = []) => {
     if (name) {
       try {
         const newChecklist: Omit<Checklist, 'id'> = {
           name: name,
-          tasks: [],
+          tasks: tasks,
           ownerId: USER_ID,
         };
         const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
@@ -108,7 +110,7 @@ export default function Home() {
       }
     }
   }, [toast]);
-
+  
   const handleSwitchChecklist = useCallback((id: string) => {
     setActiveChecklistId(id);
   }, []);
@@ -130,6 +132,37 @@ export default function Home() {
     setImportMode(mode);
     fileInputRef.current?.click();
   };
+  
+  const handleOverwriteChecklist = useCallback(async (checklistId: string, name: string, tasks: Task[]) => {
+    const checklistToUpdate = {
+        id: checklistId,
+        name: name,
+        ownerId: USER_ID,
+        tasks: tasks,
+    };
+    await handleUpdateChecklist(checklistToUpdate);
+    toast({ title: "Import Successful", description: `Checklist "${name}" has been overwritten.` });
+  }, [handleUpdateChecklist, toast]);
+
+  const handleAppendToChecklist = useCallback(async (checklistId: string, tasks: Task[]) => {
+    const checklistRef = doc(db, 'checklists', checklistId);
+    try {
+        const docSnap = await getDoc(checklistRef);
+        if (docSnap.exists()) {
+            const existingChecklist = docSnap.data() as Omit<Checklist, 'id'>;
+            const updatedChecklist = {
+                id: checklistId,
+                tasks: [...existingChecklist.tasks, ...tasks],
+            };
+            await handleUpdateChecklist(updatedChecklist);
+            toast({ title: "Import Successful", description: `${tasks.length} tasks appended to "${existingChecklist.name}".`});
+        }
+    } catch (error) {
+        console.error("Error appending to checklist:", error);
+        toast({ title: "Error", description: "Failed to append tasks to the checklist.", variant: "destructive" });
+    }
+  }, [handleUpdateChecklist, toast]);
+
 
   const handleFileSelectedForImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!importMode) return;
@@ -152,6 +185,13 @@ export default function Home() {
         const lines = content.split('\n');
         const newTasks: Task[] = [];
         let currentTask: Task | null = null;
+        
+        const checklistNameMatch = lines[0]?.match(/^#\s+(.*)/);
+        if (!checklistNameMatch) {
+          toast({ title: "Import failed", description: "Invalid format: Checklist must start with a '# Checklist Name' title.", variant: "destructive" });
+          return;
+        }
+        const newChecklistName = checklistNameMatch[1].trim();
 
         for (const line of lines) {
           const taskMatch = line.match(/^- \[( |x)\]\s+(.*)/);
@@ -206,19 +246,12 @@ export default function Home() {
         if (currentTask) { newTasks.push(currentTask); }
 
         if (importMode === 'new') {
-            const checklistNameMatch = lines[0]?.match(/^#\s+(.*)/);
-            if (!checklistNameMatch) {
-              toast({ title: "Import failed", description: "Invalid format: Checklist must start with a '# Checklist Name' title.", variant: "destructive" });
+            const existingChecklist = checklistMetas.find(meta => meta.name === newChecklistName);
+            if (existingChecklist) {
+              setImportConflict({ conflictingId: existingChecklist.id, name: newChecklistName, tasks: newTasks });
               return;
             }
-            const newChecklistName = checklistNameMatch[1].trim();
-            const newChecklist: Omit<Checklist, 'id'> = {
-              name: newChecklistName,
-              tasks: newTasks,
-              ownerId: USER_ID,
-            };
-            const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
-            setActiveChecklistId(docRef.id);
+            await handleSaveNewChecklist(newChecklistName, newTasks);
             toast({ title: "Import successful", description: `Checklist "${newChecklistName}" with ${newTasks.length} tasks imported.` });
 
         } else if (importMode === 'current') {
@@ -331,7 +364,24 @@ export default function Home() {
       <NewChecklistDialog
         open={isNewChecklistDialogOpen}
         onOpenChange={setIsNewChecklistDialogOpen}
-        onSave={handleSaveNewChecklist}
+        onSave={(name) => handleSaveNewChecklist(name)}
+      />
+      <ImportConflictDialog
+        open={!!importConflict}
+        onOpenChange={(isOpen) => !isOpen && setImportConflict(null)}
+        checklistName={importConflict?.name || ''}
+        onOverwrite={() => {
+          if (importConflict) {
+            handleOverwriteChecklist(importConflict.conflictingId, importConflict.name, importConflict.tasks);
+            setImportConflict(null);
+          }
+        }}
+        onAppend={() => {
+          if (importConflict) {
+            handleAppendToChecklist(importConflict.conflictingId, importConflict.tasks);
+            setImportConflict(null);
+          }
+        }}
       />
     </div>
   );
