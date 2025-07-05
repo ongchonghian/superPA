@@ -106,7 +106,7 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
         details = "Your security rules are preventing the upload. Ensure your Storage security rules allow writes for authenticated users: `allow write: if request.auth != null;`";
       } else if (error.code === 'storage/object-not-found') {
          message = 'Storage Bucket Not Found (404)';
-         details = "The upload failed because the storage bucket could not be found. This is almost always caused by an incorrect value for `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` in your `.env.local` file. Please verify that the value is correct and uses the format `your-project-id.appspot.com`. It should not be a full URL.";
+         details = "The upload failed because the Storage Bucket could not be found (404 Error). This is the most common setup issue and is almost always caused by an incorrect value for `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` in your `.env.local` file.\n\n**Correct format:** `your-project-id.appspot.com`\n**Incorrect format:** `your-project-id.firebasestorage.com`\n\nPlease verify the value is correct, save the `.env.local` file, and **restart the backend**.";
       }
 
       setDiagnosticResult({
@@ -202,7 +202,7 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
                            {diagnosticResult.message}
                         </div>
                         {diagnosticResult.details && (
-                           <p className={`mt-2 ${diagnosticResult.success ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
+                           <p className={`mt-2 whitespace-pre-wrap ${diagnosticResult.success ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
                                 {diagnosticResult.details}
                             </p>
                         )}
