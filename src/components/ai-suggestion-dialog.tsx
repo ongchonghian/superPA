@@ -22,9 +22,14 @@ interface AiSuggestionDialogProps {
   onUpdateTask: (task: Task) => void;
 }
 
+type Suggestion = {
+    suggestion: string;
+    context: string;
+}
+
 export function AiSuggestionDialog({ task, open, onOpenChange, onUpdateTask }: AiSuggestionDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -47,8 +52,8 @@ export function AiSuggestionDialog({ task, open, onOpenChange, onUpdateTask }: A
       setSuggestions(result.nextSteps);
       if (result.nextSteps.length === 0) {
         toast({
-            title: "No suggestions found",
-            description: "The AI couldn't find any automatable tasks.",
+            title: "No new suggestions found",
+            description: "The AI couldn't find any new automatable tasks.",
         });
       }
     } catch (error) {
@@ -80,7 +85,7 @@ export function AiSuggestionDialog({ task, open, onOpenChange, onUpdateTask }: A
 
     onUpdateTask(updatedTask as Task);
     
-    setSuggestions(currentSuggestions => currentSuggestions.filter(s => s !== suggestionToAdd));
+    setSuggestions(currentSuggestions => currentSuggestions.filter(s => s.suggestion !== suggestionToAdd));
     
     toast({
         title: "AI To-Do Added",
@@ -106,14 +111,17 @@ export function AiSuggestionDialog({ task, open, onOpenChange, onUpdateTask }: A
             {suggestions.length > 0 ? (
                 <div className="space-y-2">
                     <h3 className="text-sm font-medium text-foreground">Suggestions:</h3>
-                    <ul className="space-y-2 rounded-md border border-border bg-secondary/50 p-4">
+                    <ul className="space-y-3 rounded-md border border-border bg-secondary/50 p-4">
                     {suggestions.map((suggestion, index) => (
-                        <li key={index} className="flex items-center justify-between gap-3 animate-in fade-in duration-300">
+                        <li key={index} className="flex items-start justify-between gap-3 animate-in fade-in duration-300">
                            <div className="flex items-start gap-3 flex-1">
                                 <Lightbulb className="h-4 w-4 mt-1 shrink-0 text-accent"/>
-                                <span className="text-sm text-secondary-foreground break-words">{suggestion}</span>
+                                <div className="flex flex-col">
+                                    <span className="text-sm text-secondary-foreground break-words font-medium">{suggestion.suggestion}</span>
+                                    <span className="text-xs text-muted-foreground mt-1 italic">&quot;{suggestion.context}&quot;</span>
+                                </div>
                             </div>
-                            <Button size="sm" variant="outline" onClick={() => handleAddSuggestionAsRemark(suggestion)}>
+                            <Button size="sm" variant="outline" onClick={() => handleAddSuggestionAsRemark(suggestion.suggestion)}>
                                 Add
                             </Button>
                         </li>

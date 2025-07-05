@@ -17,14 +17,19 @@ const SuggestNextStepsInputSchema = z.object({
   taskDescription: z.string().describe('The detailed description of the task.'),
   discussionHistory: z
     .string()
-    .describe('The historical discussion related to the task.'),
+    .describe('The historical discussion related to the task, including existing remarks and AI To-Dos.'),
 });
 export type SuggestNextStepsInput = z.infer<typeof SuggestNextStepsInputSchema>;
 
+const SuggestionSchema = z.object({
+    suggestion: z.string().describe('The suggested AI To-Do item, formatted as "[ai-todo|pending] {description}".'),
+    context: z.string().describe('A brief explanation of why this suggestion is being made, referencing the source remark(s) or to-do(s).'),
+});
+
 const SuggestNextStepsOutputSchema = z.object({
   nextSteps: z
-    .array(z.string())
-    .describe('A list of suggested AI To-Do items for the task.'),
+    .array(SuggestionSchema)
+    .describe('A list of suggested AI To-Do items for the task, with context.'),
 });
 export type SuggestNextStepsOutput = z.infer<typeof SuggestNextStepsOutputSchema>;
 
@@ -43,11 +48,14 @@ Analyze the following information:
 Task Description: {{{taskDescription}}}
 Discussion History: {{{discussionHistory}}}
 
-Based on your analysis, generate a list of suggestions for AI To-Dos. Each suggestion must be a clear, single-action instruction for an AI to perform.
-Format each suggestion as a string following this exact syntax: "[ai-todo|pending] {description of the AI task}"
+Based on your analysis, generate a list of *new* suggestions for AI To-Dos. Do not suggest any AI To-Dos that are functionally identical to ones already present in the discussion history.
 
-If you cannot identify any automatable tasks, return an empty array for the 'nextSteps' field.
-Return the suggestions as a JSON object.
+For each suggestion, provide the following in the output object:
+1. suggestion: The AI To-Do formatted as a string following this exact syntax: "[ai-todo|pending] {description of the AI task}"
+2. context: A short explanation for *why* you are making this suggestion. If it relates to a specific remark, quote part of that remark in your explanation.
+
+If you cannot identify any new automatable tasks, return an empty array for the 'nextSteps' field.
+Return the suggestions as a JSON object conforming to the output schema.
   `,
 });
 
