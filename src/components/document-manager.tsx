@@ -56,15 +56,7 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
     setIsDiagnosing(true);
     setDiagnosticResult(null);
 
-    const TIMEOUT_DURATION = 15000; // 15 seconds
-
-    const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => {
-            reject(new Error('Diagnostic test timed out. This often indicates a network issue or a problem with your Firebase project configuration that prevents a response. Please check your browser\'s developer console for network errors.'));
-        }, TIMEOUT_DURATION);
-    });
-
-    const diagnosticWork = async () => {
+    try {
         if (!storage || !auth) {
             throw new Error('Firebase Not Initialized. The Firebase storage or auth service could not be found. Check your .env.local file and restart the backend.');
         }
@@ -86,16 +78,11 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
             console.warn('Diagnostic test file cleanup failed, but the upload was successful. You may need to delete the test file manually from your storage bucket.', deleteError);
         }
 
-        return {
+        setDiagnosticResult({
             success: true,
             message: 'Upload Successful!',
             details: `A test file was successfully written to your Firebase Storage bucket at: ${testFilePath}. The file was automatically deleted after the test.`,
-        };
-    };
-
-    try {
-        const result = await Promise.race([diagnosticWork(), timeoutPromise]);
-        setDiagnosticResult(result as any);
+        });
     } catch (error: any) {
         console.error('Diagnostic test failed:', error);
         let message = 'Upload Failed';
@@ -112,9 +99,6 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
             details = error.message;
         } else if (error.message.includes('Not Authenticated')) {
             message = 'Not Authenticated';
-            details = error.message;
-        } else if (error.message.includes('Diagnostic test timed out')) {
-            message = 'Test Timed Out';
             details = error.message;
         }
 
@@ -195,7 +179,7 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
             <AlertTitle className="font-semibold">Having trouble uploading?</AlertTitle>
             <AlertDescription className="mt-2 space-y-4">
                 <p>
-                    If uploads are failing, you can run a quick diagnostic test to check your connection and permissions with Firebase Storage.
+                    If uploads are failing or the test below seems to hang, it's a strong sign of a configuration issue. Run the diagnostic test to check your connection and permissions with Firebase Storage.
                 </p>
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
                     <Button variant="secondary" onClick={runDiagnosticTest} disabled={isDiagnosing}>
