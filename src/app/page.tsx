@@ -24,6 +24,8 @@ import { PRIORITIES } from '@/lib/data';
 import { ChecklistAiSuggestionDialog } from '@/components/checklist-ai-suggestion-dialog';
 import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion } from '@/ai/flows/suggest-checklist-next-steps';
 import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
+import { TaskDialog } from '@/components/task-dialog';
+import { TaskRemarksSheet } from '@/components/task-remarks-sheet';
 
 // This is a placeholder for a real user authentication system.
 // In a real app, you would get this from your auth provider.
@@ -81,13 +83,12 @@ export default function Home() {
     const unsubscribe = onSnapshot(doc(db, 'checklists', activeChecklistId), (doc) => {
       if (doc.exists()) {
         const newChecklist = { id: doc.id, ...doc.data() } as Checklist;
-        // Invalidate AI suggestions if checklist has changed
-        if (JSON.stringify(activeChecklist?.tasks) !== JSON.stringify(newChecklist.tasks)) {
-          setAiAnalysisResult(null);
-        }
         setActiveChecklist(newChecklist);
       } else {
         setActiveChecklist(null);
+        // After a delete, activeChecklistId might still be set, but the doc is gone.
+        // We need to ensure we don't try to use it.
+        // The other useEffect will pick a new one.
       }
     }, (error) => {
       console.error("Error fetching active checklist: ", error);
@@ -95,7 +96,7 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [activeChecklistId, toast, activeChecklist]);
+  }, [activeChecklistId, toast]);
   
 
   const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
@@ -136,7 +137,7 @@ export default function Home() {
       try {
         await deleteDoc(doc(db, 'checklists', id));
         toast({ title: "Success", description: "Checklist deleted." });
-        // The main useEffect listening to checklistMetas will handle the UI update.
+        // The onSnapshot listener for `checklistMetas` will handle the UI update automatically.
       } catch (error) {
         console.error("Error deleting checklist: ", error);
         toast({ title: "Error", description: "Failed to delete checklist.", variant: "destructive" });
