@@ -274,7 +274,14 @@ export default function Home() {
                     timestamp = parsedTimestamp.toISOString();
                 }
             }
-            currentTask.remarks.push({ id: `rem_${Date.now()}_${Math.random()}`, text, userId, timestamp });
+
+            let finalRemarkText = text;
+            const aiTodoMatchOld = text.match(/^TODO \(Assigned to AI\):\s*(.*)/s);
+            if (aiTodoMatchOld) {
+              finalRemarkText = `[ai-todo|pending] ${aiTodoMatchOld[1].trim()}`;
+            }
+
+            currentTask.remarks.push({ id: `rem_${Date.now()}_${Math.random()}`, text: finalRemarkText, userId, timestamp });
           }
         }
         if (currentTask) { newTasks.push(currentTask); }

@@ -62,16 +62,35 @@ const priorityColors: { [key in TaskPriority]: string } = {
 };
 
 const RemarkDisplay = ({ text }: { text: string }) => {
-  const aiTodoMatch = text.match(/^TODO \(Assigned to AI\): (.*)/s);
+  const newAiTodoMatch = text.match(/^\[ai-todo\|(pending|running|completed|failed)\]\s*(.*)/s);
+  const legacyAiTodoMatch = text.match(/^TODO \(Assigned to AI\):\s*(.*)/s);
 
-  if (aiTodoMatch) {
-    const todoText = aiTodoMatch[1].trim();
+  const isAiTodo = newAiTodoMatch || legacyAiTodoMatch;
+
+  if (isAiTodo) {
+    const status = newAiTodoMatch ? newAiTodoMatch[1] : 'pending';
+    const todoText = (newAiTodoMatch ? newAiTodoMatch[2] : legacyAiTodoMatch![1]).trim();
+    
+    const statusPill = (
+        <span className={`capitalize px-1.5 py-0.5 text-xs rounded-full font-medium ${
+            status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300' :
+            status === 'running' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' :
+            status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' :
+            'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
+        }`}>
+            {status}
+        </span>
+    );
+
     return (
-      <div className="p-2 rounded-lg border border-accent/30 bg-accent/10">
+      <div className="p-2 mt-1 rounded-lg border border-accent/30 bg-accent/10">
         <div className="flex items-start gap-2.5">
           <WandSparkles className="h-4 w-4 mt-0.5 text-accent flex-shrink-0" />
-          <div>
-            <h4 className="text-xs font-semibold tracking-wider uppercase text-accent">AI To-Do</h4>
+          <div className="flex-1">
+            <div className="flex justify-between items-center mb-1">
+                <h4 className="text-xs font-semibold tracking-wider uppercase text-accent">AI To-Do</h4>
+                {statusPill}
+            </div>
             <p className="text-sm text-foreground/90 whitespace-pre-wrap">{todoText}</p>
           </div>
         </div>
