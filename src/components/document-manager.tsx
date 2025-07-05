@@ -47,7 +47,7 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
       <CardHeader>
         <CardTitle>Context Documents</CardTitle>
         <CardDescription>
-          Upload documents to provide more context to the AI for better suggestions.
+          Upload documents to provide more context to the AI for better suggestions. Files are stored securely in your project's Firebase Storage bucket under a unique folder for each checklist.
         </CardDescription>
       </CardHeader>
       <CardContent>
