@@ -68,28 +68,29 @@ export default function Home() {
       setIsAuthLoading(false);
       return;
     }
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserId(user.uid);
         setIsAuthLoading(false);
       } else {
-        try {
-          const userCredential = await signInAnonymously(auth);
-          setUserId(userCredential.user.uid);
-        } catch (error: any) {
-          console.error("Anonymous sign-in failed: ", error);
-          if (error.code === 'auth/configuration-not-found') {
-            setIsConfigError(true);
-          } else {
-            toast({
-              title: "Authentication Failed",
-              description: "Could not connect to the service. Please try again later.",
-              variant: "destructive",
-            });
-          }
-        } finally {
-          setIsAuthLoading(false);
-        }
+        signInAnonymously(auth)
+          .then((userCredential) => {
+            setUserId(userCredential.user.uid);
+            setIsAuthLoading(false);
+          })
+          .catch((error: any) => {
+            console.error("Anonymous sign-in failed: ", error);
+            if (error.code === 'auth/configuration-not-found') {
+              setIsConfigError(true);
+            } else {
+              toast({
+                title: "Authentication Failed",
+                description: "Could not connect to the service. Please try again later.",
+                variant: "destructive",
+              });
+            }
+            setIsAuthLoading(false);
+          });
       }
     });
 
@@ -740,7 +741,7 @@ export default function Home() {
   },[activeChecklist, handleUpdateChecklist]);
 
 
-  if (isAuthLoading || isLoading) {
+  if (isAuthLoading || (isLoading && !activeChecklist)) {
     return <Loading />;
   }
 
