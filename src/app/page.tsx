@@ -53,15 +53,16 @@ export default function Home() {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
 
-      // New logic to handle active checklist ID after list updates
+      // This logic will now correctly handle setting the active ID.
       setActiveChecklistId(currentId => {
-        // If there's no current ID, or the current one was deleted
-        if (!currentId || !metas.some(m => m.id === currentId)) {
-          // Select the first available one, or null if empty
-          return metas.length > 0 ? metas[0].id : null;
+        const currentChecklistExists = metas.some(m => m.id === currentId);
+        if (currentId && currentChecklistExists) {
+          return currentId; // Keep the current ID if it still exists.
         }
-        // Otherwise, keep the current one
-        return currentId;
+        if (metas.length > 0) {
+          return metas[0].id; // Otherwise, pick the first one.
+        }
+        return null; // Or null if the list is empty.
       });
       
       setIsLoading(false);
@@ -85,10 +86,9 @@ export default function Home() {
         const newChecklist = { id: doc.id, ...doc.data() } as Checklist;
         setActiveChecklist(newChecklist);
       } else {
+        // This handles the case where the active checklist is deleted by another client.
+        // The metas listener will pick a new valid ID.
         setActiveChecklist(null);
-        // After a delete, activeChecklistId might still be set, but the doc is gone.
-        // We need to ensure we don't try to use it.
-        // The other useEffect will pick a new one.
       }
     }, (error) => {
       console.error("Error fetching active checklist: ", error);
@@ -402,7 +402,7 @@ export default function Home() {
   const fetchAiSuggestions = useCallback(async () => {
     if (!activeChecklist) return;
 
-    setAiAnalysisResult(null); // Always clear before a new fetch.
+    // Do not clear analysis results here, so the dialog can show old data while loading.
     
     const incompleteTasks = activeChecklist.tasks.filter(t => t.status !== 'complete');
 
@@ -480,6 +480,8 @@ export default function Home() {
     
     handleUpdateChecklist({ ...activeChecklist, tasks: updatedTasks });
 
+    // The AI analysis cache is NOT cleared here automatically.
+    // Instead, just remove the approved suggestion from the local state.
     setAiAnalysisResult(currentResult => {
       if (!currentResult) return null;
       return {
@@ -542,6 +544,11 @@ export default function Home() {
   // States for task dialog
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
+
+  // Moved this hook to the top level to fix the order of hooks issue.
+  const assignees = useMemo(() => {
+    return [...new Set(activeChecklist?.tasks.map(t => t.assignee) || [])];
+  }, [activeChecklist]);
 
   if (isLoading && !activeChecklistId) {
     return <Loading />;
@@ -631,16 +638,17 @@ export default function Home() {
         open={isTaskDialogOpen}
         onOpenChange={setIsTaskDialogOpen}
         onSave={(taskToSave) => {
-          const exists = activeChecklist?.tasks.some(t => t.id === taskToSave.id);
+          if (!activeChecklist) return; // Guard against no active checklist
+          const exists = activeChecklist.tasks.some(t => t.id === taskToSave.id);
           if (exists) {
-            const existingTask = activeChecklist!.tasks.find(t => t.id === taskToSave.id)!;
+            const existingTask = activeChecklist.tasks.find(t => t.id === taskToSave.id)!;
             const updatedTask = { ...existingTask, ...taskToSave };
-            const newTasks = activeChecklist!.tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
-            handleUpdateChecklist({ ...activeChecklist!, tasks: newTasks });
+            const newTasks = activeChecklist.tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
+            handleUpdateChecklist({ ...activeChecklist, tasks: newTasks });
           } else {
             const newTask = {...taskToSave, remarks: []};
-            const newTasks = [...(activeChecklist?.tasks || []), newTask];
-            handleUpdateChecklist({ ...activeChecklist!, tasks: newTasks });
+            const newTasks = [...activeChecklist.tasks, newTask];
+            handleUpdateChecklist({ ...activeChecklist, tasks: newTasks });
           }
         }}
       />
@@ -649,10 +657,11 @@ export default function Home() {
         open={isRemarksSheetOpen}
         onOpenChange={setIsRemarksSheetOpen}
         onUpdateTask={(taskToUpdate) => {
-            const newTasks = activeChecklist!.tasks.map(t => (t.id === taskToUpdate.id ? taskToUpdate : t));
-            handleUpdateChecklist({ ...activeChecklist!, tasks: newTasks });
+            if (!activeChecklist) return;
+            const newTasks = activeChecklist.tasks.map(t => (t.id === taskToUpdate.id ? taskToUpdate : t));
+            handleUpdateChecklist({ ...activeChecklist, tasks: newTasks });
         }}
-        assignees={useMemo(() => [...new Set(activeChecklist?.tasks.map(t => t.assignee) || [])], [activeChecklist])}
+        assignees={assignees}
       />
     </div>
   );
