@@ -18,6 +18,7 @@ import {
   deleteDoc,
 } from 'firebase/firestore';
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
+import { PRIORITIES } from '@/lib/data';
 
 // This is a placeholder for a real user authentication system.
 // In a real app, you would get this from your auth provider.
@@ -130,54 +131,140 @@ export default function Home() {
 
     const reader = new FileReader();
     reader.onload = async (e) => {
-      const content = e.target?.result as string;
-      const lines = content.split('\n');
-      const newTasks: Task[] = lines.map(line => {
-        const match = line.match(/- \[( |x)\] (.*)/);
-        if (!match) return null;
+      try {
+        const content = e.target?.result as string;
+        if (!content) {
+            toast({ title: "Import failed", description: "File is empty.", variant: "destructive" });
+            return;
+        }
+        
+        const lines = content.split('\n');
 
-        const [, statusChar, description] = match;
-        return {
-          id: `task_${Date.now()}_${Math.random()}`,
-          description,
-          status: (statusChar === 'x' ? 'complete' : 'pending') as TaskStatus,
-          priority: 'Medium' as TaskPriority,
-          assignee: 'Unassigned',
-          dueDate: new Date().toISOString().split('T')[0],
-          remarks: [],
-        };
-      }).filter((task): task is Task => task !== null);
+        const checklistNameMatch = lines[0]?.match(/^#\s+(.*)/);
+        if (!checklistNameMatch) {
+          toast({ title: "Import failed", description: "Invalid format: Checklist must start with a '# Checklist Name' title.", variant: "destructive" });
+          return;
+        }
+        const newChecklistName = checklistNameMatch[1].trim();
 
-      if (newTasks.length > 0) {
-        const newChecklistName = file.name.replace('.md', '');
-         const newChecklist: Omit<Checklist, 'id'> = {
-          name: newChecklistName,
-          tasks: newTasks,
-          ownerId: USER_ID,
-        };
-        const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
-        setActiveChecklistId(docRef.id);
-        toast({ title: "Import successful", description: `Checklist "${newChecklistName}" with ${newTasks.length} tasks imported.` });
-      } else {
-        toast({ title: "Import failed", description: "No valid tasks found in the file.", variant: "destructive" });
+        const newTasks: Task[] = [];
+        let currentTask: Task | null = null;
+
+        for (const line of lines) {
+          const taskMatch = line.match(/^- \[( |x)\]\s+(.*)/);
+          if (taskMatch) {
+            if (currentTask) {
+              newTasks.push(currentTask);
+            }
+
+            const [, statusChar, restOfLine] = taskMatch;
+
+            let description = restOfLine.trim();
+            let priority: TaskPriority = 'Medium';
+            let assignee = 'Unassigned';
+            let dueDate = new Date().toISOString().split('T')[0];
+
+            const detailsMatch = restOfLine.match(/(.*)\(Priority:\s*(.*),\s*Assignee:\s*(.*),\s*Due:\s*(.*)\)/);
+            if (detailsMatch) {
+              description = detailsMatch[1].trim();
+              const parsedPriority = detailsMatch[2].trim() as TaskPriority;
+              if (PRIORITIES.includes(parsedPriority)) {
+                priority = parsedPriority;
+              }
+              assignee = detailsMatch[3].trim();
+              try {
+                const parsedDate = new Date(detailsMatch[4].trim());
+                if(!isNaN(parsedDate.getTime())) {
+                    dueDate = parsedDate.toISOString().split('T')[0];
+                }
+              } catch (error) {
+                // keep default if date is invalid
+              }
+            }
+
+            currentTask = {
+              id: `task_${Date.now()}_${Math.random()}`,
+              description,
+              status: (statusChar === 'x' ? 'complete' : 'pending') as TaskStatus,
+              priority,
+              assignee,
+              dueDate,
+              remarks: [],
+            };
+            continue;
+          }
+
+          const remarkMatch = line.match(/^\s{2,}-\s+(.*)/);
+          if (remarkMatch && currentTask) {
+            let text = remarkMatch[1].trim();
+            let userId = 'system';
+            let timestamp = new Date().toISOString();
+
+            const remarkDetailsMatch = text.match(/(.*) \[(.*) @ (.*)\]/);
+            if (remarkDetailsMatch) {
+              text = remarkDetailsMatch[1].trim();
+              userId = remarkDetailsMatch[2].trim();
+              try {
+                const parsedTimestamp = new Date(remarkDetailsMatch[3].trim());
+                if(!isNaN(parsedTimestamp.getTime())) {
+                    timestamp = parsedTimestamp.toISOString();
+                }
+              } catch (error) {
+                // keep default timestamp if invalid
+              }
+            }
+
+            currentTask.remarks.push({
+              id: `rem_${Date.now()}_${Math.random()}`,
+              text,
+              userId,
+              timestamp,
+            });
+          }
+        }
+
+        if (currentTask) {
+          newTasks.push(currentTask);
+        }
+
+        if (newTasks.length > 0) {
+          const newChecklist: Omit<Checklist, 'id'> = {
+            name: newChecklistName,
+            tasks: newTasks,
+            ownerId: USER_ID,
+          };
+          const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
+          setActiveChecklistId(docRef.id);
+          toast({ title: "Import successful", description: `Checklist "${newChecklistName}" with ${newTasks.length} tasks imported.` });
+        } else {
+          toast({ title: "Import failed", description: "No valid tasks found in the file.", variant: "destructive" });
+        }
+      } catch (error) {
+        console.error("Error during import:", error);
+        toast({ title: "Import failed", description: "An unexpected error occurred while parsing the file.", variant: "destructive" });
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
       }
     };
     reader.readAsText(file);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
   };
 
   const handleExportMarkdown = () => {
     if (!activeChecklist) return;
+
+    const checklistTitle = `# ${activeChecklist.name}\n\n`;
+
     const markdownContent = activeChecklist.tasks.map(task => {
       const status = task.status === 'complete' ? '[x]' : '[ ]';
       const taskLine = `- ${status} ${task.description} (Priority: ${task.priority}, Assignee: ${task.assignee}, Due: ${task.dueDate})`;
-      const remarksLines = task.remarks.map(r => `  - ${r.text} [${r.userId} @ ${new Date(r.timestamp).toLocaleString()}]`).join('\n');
+      const remarksLines = task.remarks.map(r => `  - ${r.text} [${r.userId} @ ${new Date(r.timestamp).toISOString()}]`).join('\n');
       return `${taskLine}${remarksLines ? `\n${remarksLines}` : ''}`;
     }).join('\n\n');
 
-    const blob = new Blob([markdownContent], { type: 'text/markdown' });
+    const fullContent = checklistTitle + markdownContent;
+    const blob = new Blob([fullContent], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
