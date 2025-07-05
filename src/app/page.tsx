@@ -62,20 +62,31 @@ export default function Home() {
 
   // Effect to manage the active checklist ID based on the available metas
   useEffect(() => {
-    if (isLoading) return;
+    if (isLoading) {
+      return;
+    }
 
-    const activeIdExists = checklistMetas.some(meta => meta.id === activeChecklistId);
+    const activeIdStillExists = checklistMetas.some(meta => meta.id === activeChecklistId);
 
-    // If there's no active ID, or the active ID was deleted, pick a new one.
-    if (!activeIdExists) {
-        if (checklistMetas.length > 0) {
-            setActiveChecklistId(checklistMetas[0].id);
-        } else if (activeChecklistId !== null) {
-            // If no checklists exist, ensure activeId is null.
-            setActiveChecklistId(null);
-        }
+    // Case 1: There are checklists available.
+    if (checklistMetas.length > 0) {
+      // If the current active ID is no longer valid (e.g., deleted),
+      // or if there's no active ID set yet, default to the first one.
+      if (!activeIdStillExists) {
+        setActiveChecklistId(checklistMetas[0].id);
+      }
+      // Otherwise, the current active ID is fine, do nothing.
+    } 
+    // Case 2: There are no checklists at all.
+    else {
+      // If there are no checklists, ensure the active ID is null.
+      // This handles the case where the last checklist was deleted.
+      if (activeChecklistId !== null) {
+        setActiveChecklistId(null);
+      }
     }
   }, [checklistMetas, activeChecklistId, isLoading]);
+
 
   // Effect to subscribe to the currently active checklist for real-time updates
   useEffect(() => {
