@@ -16,7 +16,7 @@ export function FirebaseNotConfigured({ missingKeys }: { missingKeys?: string[] 
         {hasMissingKeys ? (
           <>
             <p className="mt-4 text-muted-foreground">
-              Your application cannot connect to Firebase because the following required environment variable(s) are missing in your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file:
+              Your application cannot connect to Firebase because the following required environment variable(s) are missing in your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env.local</code> file:
             </p>
             <div className="mt-4 inline-block bg-destructive/10 p-3 rounded-md text-left">
                 <ul className="list-disc list-inside space-y-1">
@@ -28,7 +28,7 @@ export function FirebaseNotConfigured({ missingKeys }: { missingKeys?: string[] 
           </>
         ) : (
           <p className="mt-4 text-muted-foreground">
-            Your application is showing this page because it's receiving an error from Firebase. This usually means your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file has incorrect or invalid credentials.
+            Your application is showing this page because it's receiving an error from Firebase. This usually means your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env.local</code> file has incorrect or invalid credentials.
           </p>
         )}
 
@@ -44,7 +44,7 @@ export function FirebaseNotConfigured({ missingKeys }: { missingKeys?: string[] 
             </p>
             <p>
                 <strong>3. Copy & Paste Configuration:</strong><br/>
-                Under "SDK setup and configuration", select "Config", and copy the key-value pairs into a file named <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> in your project's root directory.
+                Under "SDK setup and configuration", select "Config", and copy the key-value pairs into a file named <code className="bg-muted px-1 py-0.5 rounded text-sm">.env.local</code> in your project's root directory.
             </p>
             <p>
                 <strong>Important:</strong> Double-check that your <code className="bg-muted px-1 py-0.5 rounded text-sm">storageBucket</code> value ends in <code className="bg-muted px-1 py-0.5 rounded text-sm">.appspot.com</code>.
@@ -53,7 +53,7 @@ export function FirebaseNotConfigured({ missingKeys }: { missingKeys?: string[] 
 
         <div className="mt-6">
              <p className="text-sm text-muted-foreground">
-              Your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file should look like this:
+              Your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env.local</code> file should look like this (with quotes):
             </p>
             <pre className="mt-2 text-left bg-muted/50 p-4 rounded-md text-xs overflow-x-auto">
               <code>
@@ -74,7 +74,7 @@ export function FirebaseNotConfigured({ missingKeys }: { missingKeys?: string[] 
                 <div>
                     <h3 className="font-bold text-destructive">Crucial Step for Firebase Studio</h3>
                     <p className="mt-2 text-sm text-foreground/80 dark:text-foreground/80">
-                        After you create or edit the <code className="bg-destructive/10 text-destructive dark:bg-destructive/20 dark:text-destructive font-mono px-1 py-0.5 rounded">.env</code> file, you <strong>must</strong> restart the backend in Firebase Studio for the changes to apply. Look for a "Restart Backend" button or similar control in the Studio interface.
+                        After you create or edit the <code className="bg-destructive/10 text-destructive dark:bg-destructive/20 dark:text-destructive font-mono px-1 py-0.5 rounded">.env.local</code> file, you <strong>must</strong> restart the backend in Firebase Studio for the changes to apply. Look for a "Restart Backend" button or similar control in the Studio interface.
                     </p>
                 </div>
             </div>
