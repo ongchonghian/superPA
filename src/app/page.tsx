@@ -3,10 +3,10 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ChecklistHeader } from '@/components/checklist-header';
 import { TaskTable } from '@/components/task-table';
-import type { Checklist, Task, TaskStatus, TaskPriority, Remark } from '@/lib/types';
+import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
-import { db } from '@/lib/firebase';
+import { db, storage } from '@/lib/firebase';
 import {
   collection,
   query,
@@ -17,7 +17,11 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
+  arrayUnion,
+  arrayRemove,
+  writeBatch,
 } from 'firebase/firestore';
+import { ref as storageRef, uploadBytes, deleteObject } from 'firebase/storage';
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
@@ -26,6 +30,7 @@ import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion } from '@/ai/
 import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
 import { TaskDialog } from '@/components/task-dialog';
 import { TaskRemarksSheet } from '@/components/task-remarks-sheet';
+import { DocumentManager } from '@/components/document-manager';
 
 // This is a placeholder for a real user authentication system.
 // In a real app, you would get this from your auth provider.
@@ -37,6 +42,7 @@ export default function Home() {
   const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
   const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isNewChecklistDialogOpen, setIsNewChecklistDialogOpen] = useState(false);
   const [importMode, setImportMode] = useState<'new' | 'current' | null>(null);
@@ -44,6 +50,7 @@ export default function Home() {
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [aiAnalysisResult, setAiAnalysisResult] = useState<SuggestChecklistNextStepsOutput | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
@@ -52,17 +59,21 @@ export default function Home() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
+      
+      if (metas.length === 0) {
+        setActiveChecklistId(null);
+        setActiveChecklist(null);
+      }
 
-      // This logic will now correctly handle setting the active ID.
       setActiveChecklistId(currentId => {
         const currentChecklistExists = metas.some(m => m.id === currentId);
-        if (currentId && currentChecklistExists) {
-          return currentId; // Keep the current ID if it still exists.
+        if (currentChecklistExists) {
+          return currentId;
         }
         if (metas.length > 0) {
-          return metas[0].id; // Otherwise, pick the first one.
+          return metas[0].id;
         }
-        return null; // Or null if the list is empty.
+        return null;
       });
       
       setIsLoading(false);
@@ -86,9 +97,8 @@ export default function Home() {
         const newChecklist = { id: doc.id, ...doc.data() } as Checklist;
         setActiveChecklist(newChecklist);
       } else {
-        // This handles the case where the active checklist is deleted by another client.
-        // The metas listener will pick a new valid ID.
         setActiveChecklist(null);
+        setDocuments([]);
       }
     }, (error) => {
       console.error("Error fetching active checklist: ", error);
@@ -98,6 +108,24 @@ export default function Home() {
     return () => unsubscribe();
   }, [activeChecklistId, toast]);
   
+  // Effect to subscribe to documents associated with the active checklist
+  useEffect(() => {
+    if (!activeChecklist || !activeChecklist.documentIds || activeChecklist.documentIds.length === 0) {
+      setDocuments([]);
+      return;
+    }
+
+    const q = query(collection(db, 'documents'), where('__name__', 'in', activeChecklist.documentIds));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const fetchedDocs = querySnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Document));
+        setDocuments(fetchedDocs);
+    }, (error) => {
+        console.error("Error fetching documents: ", error);
+        toast({ title: "Error", description: "Could not load associated documents.", variant: "destructive" });
+    });
+
+    return () => unsubscribe();
+  }, [activeChecklist, toast]);
 
   const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
     const { id, ...data } = updatedChecklist;
@@ -117,6 +145,7 @@ export default function Home() {
           name: name,
           tasks: tasks,
           ownerId: USER_ID,
+          documentIds: [],
         };
         const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
         setActiveChecklistId(docRef.id);
@@ -137,7 +166,6 @@ export default function Home() {
       try {
         await deleteDoc(doc(db, 'checklists', id));
         toast({ title: "Success", description: "Checklist deleted." });
-        // The onSnapshot listener for `checklistMetas` will handle the UI update automatically.
       } catch (error) {
         console.error("Error deleting checklist: ", error);
         toast({ title: "Error", description: "Failed to delete checklist.", variant: "destructive" });
@@ -401,8 +429,6 @@ export default function Home() {
   
   const fetchAiSuggestions = useCallback(async () => {
     if (!activeChecklist) return;
-
-    // Do not clear analysis results here, so the dialog can show old data while loading.
     
     const incompleteTasks = activeChecklist.tasks.filter(t => t.status !== 'complete');
 
@@ -439,22 +465,16 @@ export default function Home() {
         description: 'Failed to generate suggestions. Please try again.',
         variant: 'destructive',
       });
-      setAiAnalysisResult(null); // Clear on error as well
+      setAiAnalysisResult(null); 
     } finally {
       setIsAiLoading(false);
     }
   }, [activeChecklist, toast]);
 
   const handleGetAiSuggestions = useCallback(() => {
-    // If suggestions are already cached, just show them.
-    if (aiAnalysisResult) {
-      setIsAiDialogOpen(true);
-    } else {
-      // Otherwise, open the dialog (it will show a loading state) and fetch.
-      setIsAiDialogOpen(true);
-      fetchAiSuggestions();
-    }
-  }, [aiAnalysisResult, fetchAiSuggestions]);
+    setIsAiDialogOpen(true);
+    fetchAiSuggestions();
+  }, [fetchAiSuggestions]);
 
   const handleAddSuggestionAsRemark = useCallback((suggestionToAdd: ChecklistSuggestion) => {
     if (!activeChecklist) return;
@@ -480,8 +500,6 @@ export default function Home() {
     
     handleUpdateChecklist({ ...activeChecklist, tasks: updatedTasks });
 
-    // The AI analysis cache is NOT cleared here automatically.
-    // Instead, just remove the approved suggestion from the local state.
     setAiAnalysisResult(currentResult => {
       if (!currentResult) return null;
       return {
@@ -500,12 +518,100 @@ export default function Home() {
     if (!activeChecklist) return;
     const task = activeChecklist.tasks.find(t => t.id === taskId);
     if (task) {
-      setIsAiDialogOpen(false); // Close the AI dialog
-      // Use the existing state setters for the remarks sheet
+      setIsAiDialogOpen(false);
       const event = new CustomEvent('open-remarks', { detail: task });
       window.dispatchEvent(event);
     }
   }, [activeChecklist]);
+
+  const handleUploadDocuments = useCallback(async (files: FileList) => {
+    if (!activeChecklist) {
+      toast({ title: "Error", description: "No active checklist selected.", variant: "destructive" });
+      return;
+    }
+
+    setIsUploading(true);
+    const uploadToast = toast({ title: "Uploading...", description: `Starting upload of ${files.length} document(s).` });
+
+    try {
+      const uploadPromises = Array.from(files).map(async (file) => {
+        const newDocRef = doc(collection(db, "documents")); // Create a ref with a new ID
+        const storagePath = `documents/${activeChecklist.id}/${newDocRef.id}-${file.name}`;
+        const fileRef = storageRef(storage, storagePath);
+
+        // Upload the file
+        await uploadBytes(fileRef, file);
+
+        // Use a batch to write to Firestore
+        const batch = writeBatch(db);
+
+        // 1. Create the new document record
+        batch.set(newDocRef, {
+            checklistId: activeChecklist.id,
+            fileName: file.name,
+            storagePath: storagePath,
+            status: 'processing',
+            createdAt: new Date().toISOString(),
+        });
+
+        // 2. Add the document ID to the checklist's array
+        const checklistRef = doc(db, 'checklists', activeChecklist.id);
+        batch.update(checklistRef, {
+            documentIds: arrayUnion(newDocRef.id)
+        });
+
+        await batch.commit();
+      });
+
+      await Promise.all(uploadPromises);
+
+      uploadToast.update({ id: uploadToast.id, title: "Upload complete", description: `${files.length} document(s) uploaded successfully.` });
+    } catch (error) {
+      console.error("Error uploading documents:", error);
+      uploadToast.update({ id: uploadToast.id, title: "Upload Failed", description: "Could not upload documents. Please try again.", variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+  }, [activeChecklist, toast]);
+
+  const handleDeleteDocument = useCallback(async (documentId: string) => {
+    if (!activeChecklist) return;
+
+    const docRef = doc(db, 'documents', documentId);
+    try {
+      const docSnap = await getDoc(docRef);
+      if (!docSnap.exists()) {
+        toast({ title: "Error", description: "Document not found.", variant: "destructive" });
+        return;
+      }
+
+      const documentData = docSnap.data() as Document;
+      const fileStorageRef = storageRef(storage, documentData.storagePath);
+
+      // Use a batch to ensure atomicity
+      const batch = writeBatch(db);
+
+      // 1. Delete Firestore document
+      batch.delete(docRef);
+
+      // 2. Remove ID from checklist's documentIds array
+      const checklistRef = doc(db, 'checklists', activeChecklist.id);
+      batch.update(checklistRef, {
+        documentIds: arrayRemove(documentId)
+      });
+
+      // Commit the batch first
+      await batch.commit();
+
+      // Then delete file from Storage
+      await deleteObject(fileStorageRef);
+
+      toast({ title: "Success", description: "Document deleted." });
+    } catch (error) {
+      console.error("Error deleting document:", error);
+      toast({ title: "Error", description: "Failed to delete document.", variant: "destructive" });
+    }
+  }, [activeChecklist, toast]);
   
   const progress = useMemo(() => {
     if (!activeChecklist || activeChecklist.tasks.length === 0) return 0;
@@ -545,7 +651,6 @@ export default function Home() {
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
 
-  // Moved this hook to the top level to fix the order of hooks issue.
   const assignees = useMemo(() => {
     return [...new Set(activeChecklist?.tasks.map(t => t.assignee) || [])];
   }, [activeChecklist]);
@@ -578,10 +683,18 @@ export default function Home() {
       />
       <main className="p-4 sm:p-6 lg:p-8">
         {activeChecklist ? (
-          <TaskTable
-            checklist={activeChecklist}
-            onUpdate={handleUpdateChecklist}
-          />
+          <>
+            <DocumentManager 
+              documents={documents}
+              onUpload={handleUploadDocuments}
+              onDelete={handleDeleteDocument}
+              isUploading={isUploading}
+            />
+            <TaskTable
+              checklist={activeChecklist}
+              onUpdate={handleUpdateChecklist}
+            />
+          </>
         ) : !isLoading ? (
           <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border text-center h-[60vh]">
             <h2 className="text-xl font-semibold text-foreground">No Checklist Selected</h2>
