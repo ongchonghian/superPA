@@ -6,8 +6,7 @@ import { TaskTable } from '@/components/task-table';
 import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
-import { isFirebaseConfigured, db, storage, auth } from '@/lib/firebase';
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { isFirebaseConfigured, db, storage } from '@/lib/firebase';
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import { ref as storageRef, uploadBytes, deleteObject } from 'firebase/storage';
 import {
@@ -36,9 +35,7 @@ import { DocumentManager } from '@/components/document-manager';
 
 export default function Home() {
   const { toast } = useToast();
-  const [userId, setUserId] = useState<string | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [isConfigError, setIsConfigError] = useState(false);
+  const userId = 'local_user'; // Using a fixed user ID for prototype
   const [isLoading, setIsLoading] = useState(true);
   const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
@@ -57,49 +54,14 @@ export default function Home() {
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
 
-  // If Firebase is not configured statically or a runtime config error occurs, show guidance.
-  if (!isFirebaseConfigured || isConfigError) {
+  // If Firebase is not configured statically, show guidance.
+  if (!isFirebaseConfigured) {
     return <FirebaseNotConfigured />;
   }
   
-  // Effect to handle anonymous authentication
-  useEffect(() => {
-    if (!auth) {
-      setIsAuthLoading(false);
-      return;
-    }
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        setUserId(user.uid);
-        setIsAuthLoading(false);
-      } else {
-        signInAnonymously(auth)
-          .then((userCredential) => {
-            setUserId(userCredential.user.uid);
-            setIsAuthLoading(false);
-          })
-          .catch((error: any) => {
-            console.error("Anonymous sign-in failed: ", error);
-            if (error.code === 'auth/configuration-not-found') {
-              setIsConfigError(true);
-            } else {
-              toast({
-                title: "Authentication Failed",
-                description: "Could not connect to the service. Please try again later.",
-                variant: "destructive",
-              });
-            }
-            setIsAuthLoading(false);
-          });
-      }
-    });
-
-    return () => unsubscribe();
-  }, [toast]);
-
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
-    if (!db || !userId) {
+    if (!db) {
       setChecklistMetas([]);
       setIsLoading(false);
       return;
@@ -132,7 +94,7 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [toast, userId]);
+  }, [toast]); // userId is a constant, so no dependency needed
 
   // Effect to subscribe to the currently active checklist for real-time updates
   useEffect(() => {
@@ -194,7 +156,7 @@ export default function Home() {
   }, [toast]);
 
   const handleSaveNewChecklist = useCallback(async (name: string, tasks: Task[] = []) => {
-    if (name && userId) {
+    if (name) {
       try {
         const newChecklist: Omit<Checklist, 'id'> = {
           name: name,
@@ -210,7 +172,7 @@ export default function Home() {
         toast({ title: "Error", description: "Failed to create checklist.", variant: "destructive" });
       }
     }
-  }, [toast, userId]);
+  }, [toast]);
   
   const handleSwitchChecklist = useCallback((id: string) => {
     setActiveChecklistId(id);
@@ -741,7 +703,7 @@ export default function Home() {
   },[activeChecklist, handleUpdateChecklist]);
 
 
-  if (isAuthLoading || (isLoading && !activeChecklist)) {
+  if (isLoading && !activeChecklistId) {
     return <Loading />;
   }
 
@@ -781,7 +743,7 @@ export default function Home() {
               onUpdate={handleUpdateChecklist}
             />
           </>
-        ) : userId ? (
+        ) : (
           <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border text-center h-[60vh]">
             <h2 className="text-xl font-semibold text-foreground">No Checklist Selected</h2>
             <p className="mt-2 text-muted-foreground">Create a new checklist or import one to get started.</p>
@@ -792,8 +754,6 @@ export default function Home() {
               Create Checklist
             </button>
           </div>
-        ) : (
-          <Loading />
         )}
       </main>
       <div className="print-only hidden">
@@ -844,7 +804,7 @@ export default function Home() {
         onOpenChange={setIsRemarksSheetOpen}
         onUpdateTask={handleUpdateTask}
         assignees={assignees}
-        userId={userId ?? undefined}
+        userId={userId}
       />
     </div>
   );
