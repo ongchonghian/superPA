@@ -473,7 +473,7 @@ export default function Home() {
     
     handleUpdateChecklist({ ...activeChecklist, tasks: updatedTasks });
 
-    setAiSuggestions(currentSuggestions => currentSuggestions.filter(s => s.suggestion !== suggestionToAdd.suggestion));
+    setAiSuggestions(currentSuggestions => currentSuggestions.filter(s => !(s.suggestion === suggestionToAdd.suggestion && s.taskId === suggestionToAdd.taskId)));
     
     toast({
         title: "AI To-Do Added",
