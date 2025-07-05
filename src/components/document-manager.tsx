@@ -1,14 +1,16 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { File, Info, Loader2, Trash2, UploadCloud, CheckCircle, AlertTriangle, PlayCircle } from 'lucide-react';
+import { File, Info, Loader2, PlayCircle, Trash2, UploadCloud } from 'lucide-react';
 import type { Document } from '@/lib/types';
 import { Input } from './ui/input';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import { auth, storage } from '@/lib/firebase';
-import { ref as storageRef, uploadString, deleteObject } from 'firebase/storage';
+import { ref as storageRef, uploadString } from 'firebase/storage';
+import { FirebaseTroubleshootingGuide } from './firebase-troubleshooting-guide';
+import { useToast } from '@/hooks/use-toast';
 
 interface DocumentManagerProps {
   documents: Document[];
@@ -19,27 +21,11 @@ interface DocumentManagerProps {
 
 export function DocumentManager({ documents, onUpload, onDelete, isUploading }: DocumentManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null);
-
-  const [isDiagnosing, setIsDiagnosing] = useState(false);
-  const [diagnosticResult, setDiagnosticResult] = useState<{
-    success: boolean;
-    message: string;
-    details?: string;
-  } | null>(null);
-
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.files && event.target.files.length > 0) {
-      setSelectedFiles(event.target.files);
-    } else {
-      setSelectedFiles(null);
-    }
-  };
+  const { toast } = useToast();
 
   const handleUploadClick = async () => {
-    if (selectedFiles) {
-      await onUpload(selectedFiles);
-      setSelectedFiles(null);
+    if (fileInputRef.current?.files) {
+      await onUpload(fileInputRef.current.files);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -53,62 +39,32 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
   }
 
   const runDiagnosticTest = async () => {
-    setIsDiagnosing(true);
-    setDiagnosticResult(null);
+    if (!storage || !auth || !auth.currentUser) {
+        toast({
+            title: "Pre-check Failed",
+            description: "Could not run test because Firebase is not fully initialized or you are not signed in. Please refresh the page.",
+            variant: "destructive"
+        });
+        return;
+    }
 
+    toast({
+        title: "Running Upload Test...",
+        description: "Check your browser's developer console (Network tab) for the result. A 404 error indicates a configuration issue.",
+    });
+    
     try {
-        if (!storage || !auth) {
-            throw new Error('Firebase Not Initialized. The Firebase storage or auth service could not be found. Check your .env.local file and restart the backend.');
-        }
-
-        if (!auth.currentUser) {
-            throw new Error('Not Authenticated. No user is signed in. The app must authenticate before it can upload files. Please refresh the page.');
-        }
-
         const testFilePath = `diagnostics/upload-test-${auth.currentUser.uid}-${Date.now()}.txt`;
         const testFileRef = storageRef(storage, testFilePath);
         const testContent = `This is a diagnostic file uploaded by user ${auth.currentUser.uid} at ${new Date().toISOString()}.`;
         
-        await uploadString(testFileRef, testContent, 'raw');
-
-        // Success! Now try to clean up.
-        try {
-            await deleteObject(testFileRef);
-        } catch (deleteError) {
-            console.warn('Diagnostic test file cleanup failed, but the upload was successful. You may need to delete the test file manually from your storage bucket.', deleteError);
-        }
-
-        setDiagnosticResult({
-            success: true,
-            message: 'Upload Successful!',
-            details: `A test file was successfully written to your Firebase Storage bucket at: ${testFilePath}. The file was automatically deleted after the test.`,
-        });
-    } catch (error: any) {
-        console.error('Diagnostic test failed:', error);
-        let message = 'Upload Failed';
-        let details = `An unexpected error occurred: ${error.message || 'Unknown error.'}`;
-        
-        if (error.code === 'storage/unauthorized') {
-            message = 'Permission Denied';
-            details = "Your security rules are preventing the upload. Ensure your Storage security rules allow writes for authenticated users: `allow write: if request.auth != null;`";
-        } else if (error.code === 'storage/object-not-found') {
-            message = 'Storage Bucket Not Found (404)';
-            details = "The upload failed because the Storage Bucket could not be found (404 Error). This is the most common setup issue and is almost always caused by an incorrect value for `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` in your `.env.local` file.\n\n**Correct format:** `your-project-id.appspot.com`\n**Incorrect format:** `your-project-id.firebasestorage.com`\n\nPlease verify the value is correct, save the `.env.local` file, and **restart the backend**.";
-        } else if (error.message.includes('Firebase Not Initialized')) {
-            message = 'Firebase Not Initialized';
-            details = error.message;
-        } else if (error.message.includes('Not Authenticated')) {
-            message = 'Not Authenticated';
-            details = error.message;
-        }
-
-        setDiagnosticResult({
-            success: false,
-            message: message,
-            details: details,
-        });
-    } finally {
-        setIsDiagnosing(false);
+        // We don't need to await or handle success/error here.
+        // The purpose is to trigger the network request for the user to observe.
+        uploadString(testFileRef, testContent, 'raw');
+    } catch (error) {
+        // The browser will likely throw a CORS error before this is ever reached.
+        // We are intentionally not handling it to prevent the app from crashing.
+        console.error("Diagnostic upload could not be initiated.", error);
     }
   };
 
@@ -117,7 +73,7 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
       <CardHeader>
         <CardTitle>Context Documents</CardTitle>
         <CardDescription>
-          Upload documents to provide the AI with more context for better suggestions. Files are stored securely and privately in your project's Firebase Storage bucket.
+          Upload documents to provide the AI with more context for better suggestions. Files are stored securely in your project's Firebase Storage bucket.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -129,15 +85,11 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
               ref={fileInputRef}
               type="file"
               multiple
-              onChange={handleFileSelect}
               className="cursor-pointer file:text-primary file:font-semibold"
               disabled={isUploading}
             />
-             <p className="text-xs text-muted-foreground">
-              {selectedFiles ? `${selectedFiles.length} file(s) selected` : 'Select one or more files to upload.'}
-            </p>
           </div>
-          <Button onClick={handleUploadClick} disabled={!selectedFiles || isUploading}>
+          <Button onClick={handleUploadClick} disabled={isUploading}>
             {isUploading ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
@@ -147,62 +99,51 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
           </Button>
         </div>
         
-        {(documents.length > 0 || isUploading) && (
+        {documents.length > 0 && (
           <div className="mt-6 space-y-3">
              <h4 className="text-sm font-medium">Associated Documents</h4>
             <ul className="rounded-md border">
               {documents.map((doc) => (
-                <li key={doc.id} className="flex items-center justify-between p-3 border-b last:border-b-0 animate-in fade-in duration-300">
+                <li key={doc.id} className="flex items-center justify-between p-3 border-b last:border-b-0">
                     <div className="flex items-center gap-3 overflow-hidden">
                         <File className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                         <span className="font-medium text-sm truncate" title={doc.fileName}>{doc.fileName}</span>
                     </div>
-                  <div className="flex items-center gap-2 sm:gap-4">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteClick(doc.id)} disabled={isUploading}>
-                        <Trash2 className="h-4 w-4" />
-                        <span className="sr-only">Delete document</span>
-                    </Button>
-                  </div>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive flex-shrink-0" onClick={() => handleDeleteClick(doc.id)} disabled={isUploading}>
+                      <Trash2 className="h-4 w-4" />
+                      <span className="sr-only">Delete document</span>
+                  </Button>
                 </li>
               ))}
-              {isUploading && documents.length === 0 && (
-                 <li className="flex items-center justify-center p-4">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-sm text-muted-foreground">Uploading...</span>
-                 </li>
-              )}
             </ul>
           </div>
         )}
          <Alert variant="default" className="mt-6 text-sm">
             <Info className="h-4 w-4" />
             <AlertTitle className="font-semibold">Having trouble uploading?</AlertTitle>
-            <AlertDescription className="mt-2 space-y-4">
-                <p>
-                    If uploads are failing or the test below seems to hang, it's a strong sign of a configuration issue. Run the diagnostic test to check your connection and permissions with Firebase Storage.
-                </p>
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                    <Button variant="secondary" onClick={runDiagnosticTest} disabled={isDiagnosing}>
-                        {isDiagnosing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlayCircle className="mr-2 h-4 w-4" />}
-                        {isDiagnosing ? 'Running Test...' : 'Run Upload Test'}
+            <AlertDescription className="mt-2 space-y-3">
+                <p>If uploads fail or seem to hang, it's almost always a Firebase configuration issue. Use the diagnostic test below for a definitive answer.</p>
+                <div className="p-4 bg-muted/50 rounded-lg">
+                    <h4 className="font-semibold text-foreground">How to Diagnose:</h4>
+                    <ol className="list-decimal list-inside mt-2 space-y-1 text-xs">
+                        <li>Open your browser's Developer Tools and switch to the <strong>Network</strong> tab.</li>
+                        <li>Click the "Run Upload Test" button.</li>
+                        <li>Look for a request to <code className="text-xs">firebasestorage.googleapis.com</code>. If you see a <strong className="text-destructive">404 Not Found</strong> error, it confirms your <code className="text-xs">.env.local</code> configuration is incorrect.</li>
+                    </ol>
+                     <Button className="mt-4" variant="secondary" onClick={runDiagnosticTest}>
+                        <PlayCircle className="mr-2 h-4 w-4" />
+                        Run Upload Test
                     </Button>
                 </div>
-
-                {diagnosticResult && (
-                    <div className={`mt-4 p-3 rounded-md text-xs ${diagnosticResult.success ? 'bg-green-100 dark:bg-green-900/50' : 'bg-red-100 dark:bg-red-900/50'}`}>
-                        <div className={`flex items-start gap-2 font-bold ${diagnosticResult.success ? 'text-green-800 dark:text-green-300' : 'text-red-800 dark:text-red-300'}`}>
-                           {diagnosticResult.success ? <CheckCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-                           {diagnosticResult.message}
-                        </div>
-                        {diagnosticResult.details && (
-                           <p className={`mt-2 whitespace-pre-wrap ${diagnosticResult.success ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>
-                                {diagnosticResult.details}
-                            </p>
-                        )}
-                    </div>
-                )}
+                <p className="text-xs text-muted-foreground pt-2">
+                    <strong>Why does it hang instead of showing a 404 error?</strong> Before uploading, your browser sends a "preflight" (OPTIONS) request to ask for permission. If the bucket name is wrong, Google's server responds to this preflight with a 404. Your browser sees this as a failed permission check and blocks the actual upload for security reasons, which can look like a timeout or a hung request in the app.
+                </p>
             </AlertDescription>
         </Alert>
+
+        <div className="mt-6">
+            <FirebaseTroubleshootingGuide />
+        </div>
       </CardContent>
     </Card>
   );
