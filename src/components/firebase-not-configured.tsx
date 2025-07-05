@@ -11,25 +11,27 @@ export function FirebaseNotConfigured() {
         </div>
         <h1 className="mt-4 text-2xl font-bold font-headline text-destructive">Firebase Not Configured</h1>
         <p className="mt-4 text-muted-foreground">
-          Your application is missing the required Firebase configuration. To fix this, you need to connect the app to your Firebase project.
+          Your application is showing this page because it cannot connect to Firebase. This usually means your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file is missing, incomplete, or incorrect.
         </p>
+
         <div className="mt-6 text-left text-foreground/90 space-y-4">
             <p>
                 <strong>1. Go to your Firebase Project:</strong><br/>
-                Open the <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">Firebase Console</a> and select the project you want to use.
+                Open the <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">Firebase Console</a> and select your project.
             </p>
             <p>
                 <strong>2. Find your Web App Config:</strong><br/>
-                In Project Settings, go to the "General" tab. Scroll down to "Your apps" and find your Web App.
+                Go to Project Settings <code className="bg-muted px-1 py-0.5 rounded text-sm">&gt;</code> General tab. Scroll down to "Your apps" and find your Web App.
             </p>
             <p>
-                <strong>3. Copy and Paste into `.env`:</strong><br/>
-                Under "SDK setup and configuration", select "Config", and copy the key-value pairs into the <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file in your project's root directory.
+                <strong>3. Copy & Paste Configuration:</strong><br/>
+                Under "SDK setup and configuration", select "Config", and copy the key-value pairs into a file named <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> in your project's root directory.
             </p>
         </div>
+
         <div className="mt-6">
              <p className="text-sm text-muted-foreground">
-              Example <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file:
+              Your <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file should look like this:
             </p>
             <pre className="mt-2 text-left bg-muted/50 p-4 rounded-md text-xs overflow-x-auto">
               <code>
@@ -42,9 +44,14 @@ export function FirebaseNotConfigured() {
               </code>
             </pre>
         </div>
-        <p className="mt-6 font-semibold text-foreground">
-          After updating the <code className="bg-muted px-1 py-0.5 rounded text-sm">.env</code> file, you must restart the development server.
-        </p>
+        
+        <div className="mt-8 bg-red-50 dark:bg-destructive/10 border-l-4 border-destructive p-4 text-left rounded-r-md">
+            <h3 className="font-bold text-destructive">Crucial Final Step</h3>
+            <p className="mt-2 text-sm text-foreground/80 dark:text-foreground/80">
+                After creating or editing the <code className="bg-destructive/10 text-destructive dark:bg-destructive/20 dark:text-destructive font-mono px-1 py-0.5 rounded">.env</code> file, you <strong>must</strong> stop your development server (press <code className="bg-destructive/10 text-destructive dark:bg-destructive/20 dark:text-destructive font-mono px-1 py-0.5 rounded">Ctrl+C</code> in the terminal) and restart it for the changes to take effect.
+            </p>
+        </div>
+
       </div>
     </div>
   );
