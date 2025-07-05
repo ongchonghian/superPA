@@ -25,4 +25,17 @@ export interface Checklist {
   name: string;
   tasks: Task[];
   ownerId: string;
+  documentIds?: string[]; // Array of document IDs associated with this checklist
+}
+
+export type DocumentStatus = 'processing' | 'ready' | 'failed';
+
+export interface Document {
+  id: string;
+  checklistId: string;
+  fileName: string;
+  storagePath: string; // Path in Firebase Storage
+  status: DocumentStatus;
+  markdownContent?: string;
+  createdAt: string; // ISO string for Firestore compatibility
 }
