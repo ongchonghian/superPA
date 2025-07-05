@@ -92,10 +92,6 @@ export default function Home() {
     return () => unsubscribe();
   }, [activeChecklistId, toast]);
   
-  // FR4.3: Invalidate AI suggestions cache when the underlying checklist data changes.
-  useEffect(() => {
-    setAiAnalysisResult(null);
-  }, [activeChecklist]);
 
   const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
     const { id, ...data } = updatedChecklist;
@@ -400,6 +396,8 @@ export default function Home() {
   const fetchAiSuggestions = useCallback(async () => {
     if (!activeChecklist) return;
 
+    setAiAnalysisResult(null); // Always clear before a new fetch.
+    
     const incompleteTasks = activeChecklist.tasks.filter(t => t.status !== 'complete');
 
     if (incompleteTasks.length === 0) {
@@ -411,7 +409,6 @@ export default function Home() {
     }
 
     setIsAiLoading(true);
-    setAiAnalysisResult(null); // Always clear before a new fetch.
 
     try {
       const tasksToAnalyze = incompleteTasks.map(task => ({
