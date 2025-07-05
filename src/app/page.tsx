@@ -60,32 +60,29 @@ export default function Home() {
     return () => unsubscribe();
   }, [toast]);
 
-  // Effect to manage the active checklist ID based on the available metas
+  // Effect to manage the active checklist ID based on the available metas.
+  // This hook is the source of truth for what checklist is currently being viewed.
   useEffect(() => {
+    // Don't run this logic until the initial checklist load is complete.
     if (isLoading) {
       return;
     }
 
+    // Check if the current active checklist ID is still valid.
     const activeIdStillExists = checklistMetas.some(meta => meta.id === activeChecklistId);
 
-    // Case 1: There are checklists available.
-    if (checklistMetas.length > 0) {
-      // If the current active ID is no longer valid (e.g., deleted),
-      // or if there's no active ID set yet, default to the first one.
-      if (!activeIdStillExists) {
+    // If the active checklist has been deleted, or if no checklist is selected yet...
+    if (!activeIdStillExists) {
+      // If there are other checklists available, set the first one as active.
+      if (checklistMetas.length > 0) {
         setActiveChecklistId(checklistMetas[0].id);
-      }
-      // Otherwise, the current active ID is fine, do nothing.
-    } 
-    // Case 2: There are no checklists at all.
-    else {
-      // If there are no checklists, ensure the active ID is null.
-      // This handles the case where the last checklist was deleted.
-      if (activeChecklistId !== null) {
+      } 
+      // If there are no checklists left at all, clear the active ID.
+      else {
         setActiveChecklistId(null);
       }
     }
-  }, [checklistMetas, activeChecklistId, isLoading]);
+  }, [checklistMetas, isLoading]); // This effect should ONLY run when the list of checklists changes.
 
 
   // Effect to subscribe to the currently active checklist for real-time updates
@@ -97,9 +94,12 @@ export default function Home() {
     const unsubscribe = onSnapshot(doc(db, 'checklists', activeChecklistId), (doc) => {
       if (doc.exists()) {
         setActiveChecklist({ id: doc.id, ...doc.data() } as Checklist);
+      } else {
+        // If the document doesn't exist, it means it was deleted.
+        // The previous useEffect will handle selecting a new active checklist or clearing it.
+        // We set the local state to null to avoid showing stale data.
+        setActiveChecklist(null);
       }
-      // If the doc doesn't exist, it means it was deleted.
-      // The other useEffect listening on checklistMetas will handle switching to a new active checklist.
     }, (error) => {
       console.error("Error fetching active checklist: ", error);
       toast({ title: "Error", description: "Could not load selected checklist.", variant: "destructive" });
@@ -151,7 +151,7 @@ export default function Home() {
       try {
         await deleteDoc(doc(db, 'checklists', id));
         toast({ title: "Success", description: "Checklist deleted." });
-        // The reactive effects will handle updating the UI.
+        // The reactive effects will now handle updating the UI correctly.
       } catch (error) {
         console.error("Error deleting checklist: ", error);
         toast({ title: "Error", description: "Failed to delete checklist.", variant: "destructive" });
