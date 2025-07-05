@@ -21,6 +21,9 @@ import {
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
+import { ChecklistAiSuggestionDialog } from '@/components/checklist-ai-suggestion-dialog';
+import type { ChecklistSuggestion } from '@/ai/flows/suggest-checklist-next-steps';
+import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
 
 // This is a placeholder for a real user authentication system.
 // In a real app, you would get this from your auth provider.
@@ -36,6 +39,9 @@ export default function Home() {
   const [isNewChecklistDialogOpen, setIsNewChecklistDialogOpen] = useState(false);
   const [importMode, setImportMode] = useState<'new' | 'current' | null>(null);
   const [importConflict, setImportConflict] = useState<{ conflictingId: string; name: string; tasks: Task[] } | null>(null);
+  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+  const [aiSuggestions, setAiSuggestions] = useState<ChecklistSuggestion[]>([]);
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
@@ -162,7 +168,6 @@ export default function Home() {
         toast({ title: "Error", description: "Failed to append tasks to the checklist.", variant: "destructive" });
     }
   }, [handleUpdateChecklist, toast]);
-
 
   const handleFileSelectedForImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!importMode) return;
@@ -382,6 +387,83 @@ export default function Home() {
     toast({ title: "Preparing PDF...", description: "Your browser's print dialog will open." });
     setTimeout(() => window.print(), 500);
   };
+
+  const handleGetChecklistSuggestions = async () => {
+    if (!activeChecklist) return;
+
+    const incompleteTasks = activeChecklist.tasks.filter(t => t.status !== 'complete');
+
+    if (incompleteTasks.length === 0) {
+      toast({
+        title: "All tasks complete!",
+        description: "There are no incomplete tasks for the AI to analyze."
+      });
+      return;
+    }
+
+    setIsAiLoading(true);
+    setAiSuggestions([]);
+    setIsAiDialogOpen(true);
+
+    try {
+      const tasksToAnalyze = incompleteTasks.map(task => ({
+        taskId: task.id,
+        taskDescription: task.description,
+        discussionHistory: task.remarks.map(r => `${r.userId}: ${r.text}`).join('\n')
+      }));
+
+      const result = await suggestChecklistNextSteps({ tasks: tasksToAnalyze });
+      setAiSuggestions(result.suggestions);
+
+      if (result.suggestions.length === 0) {
+        toast({
+            title: "No new suggestions found",
+            description: "The AI couldn't find any new automatable tasks.",
+        });
+      }
+    } catch (error) {
+      console.error('Checklist AI suggestion failed:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to generate suggestions. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const handleAddSuggestionAsRemark = useCallback((suggestionToAdd: ChecklistSuggestion) => {
+    if (!activeChecklist) return;
+
+    const targetTask = activeChecklist.tasks.find(t => t.id === suggestionToAdd.taskId);
+    if (!targetTask) return;
+
+    const newRemark: Remark = {
+        id: `rem_${Date.now()}_${Math.random()}`,
+        text: suggestionToAdd.suggestion,
+        userId: 'ai_assistant',
+        timestamp: new Date().toISOString(),
+    };
+
+    const updatedTask = {
+        ...targetTask,
+        remarks: [...targetTask.remarks, newRemark],
+    };
+
+    const updatedTasks = activeChecklist.tasks.map(t =>
+      t.id === updatedTask.id ? updatedTask : t
+    );
+    
+    handleUpdateChecklist({ ...activeChecklist, tasks: updatedTasks });
+
+    setAiSuggestions(currentSuggestions => currentSuggestions.filter(s => s.suggestion !== suggestionToAdd.suggestion));
+    
+    toast({
+        title: "AI To-Do Added",
+        description: "The suggestion has been added to the task's remarks.",
+    });
+  }, [activeChecklist, handleUpdateChecklist, toast]);
   
   const progress = useMemo(() => {
     if (!activeChecklist || activeChecklist.tasks.length === 0) return 0;
@@ -411,6 +493,7 @@ export default function Home() {
         onInitiateImport={handleInitiateImport}
         onExportMarkdown={handleExportMarkdown}
         onExportPdf={handleExportPdf}
+        onGetAiSuggestions={handleGetChecklistSuggestions}
         progress={progress}
         hasActiveChecklist={!!activeChecklist}
       />
@@ -457,6 +540,15 @@ export default function Home() {
             setImportConflict(null);
           }
         }}
+      />
+       <ChecklistAiSuggestionDialog
+        open={isAiDialogOpen}
+        onOpenChange={setIsAiDialogOpen}
+        suggestions={aiSuggestions}
+        isLoading={isAiLoading}
+        tasks={activeChecklist?.tasks || []}
+        onAddSuggestion={handleAddSuggestionAsRemark}
+        onRegenerate={handleGetChecklistSuggestions}
       />
     </div>
   );

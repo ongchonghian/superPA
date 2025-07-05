@@ -37,7 +37,6 @@ import {
 import type { Checklist, Task, TaskPriority, TaskStatus } from '@/lib/types';
 import { format, parseISO, formatDistanceToNow, isSameDay } from 'date-fns';
 import { TaskDialog } from './task-dialog';
-import { AiSuggestionDialog } from './ai-suggestion-dialog';
 import { TaskRemarksSheet } from './task-remarks-sheet';
 import {PRIORITIES, STATUSES} from '@/lib/data';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -109,8 +108,6 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
   });
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
-  const [aiSuggestionTask, setAiSuggestionTask] = useState<Task | null>(null);
-  const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [remarksTask, setRemarksTask] = useState<Task | null>(null);
   const [isRemarksSheetOpen, setIsRemarksSheetOpen] = useState(false);
 
@@ -312,8 +309,7 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                       <div className={task.status === 'complete' ? 'line-through' : ''}>{task.description}</div>
                       
                       <div className="mt-4 space-y-3">
-                        {aiTodos.length > 0 && (
-                          aiTodos.map(remark => (
+                        {aiTodos.map(remark => (
                           <div key={remark.id} className="flex items-start gap-2.5">
                             <Avatar className="h-6 w-6 border text-xs">
                                 <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
@@ -328,14 +324,13 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                                 <RemarkDisplay text={remark.text} />
                             </div>
                           </div>
-                        )))}
+                        ))}
 
                         {aiTodos.length > 0 && regularRemarks.length > 0 && (
                           <div className="py-2"><hr className="border-dashed" /></div>
                         )}
 
-                        {regularRemarks.length > 0 && (
-                          regularRemarks.map(remark => (
+                        {regularRemarks.map(remark => (
                           <div key={remark.id} className="flex items-start gap-2.5">
                             <Avatar className="h-6 w-6 border text-xs">
                                 <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
@@ -350,7 +345,7 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                                 <RemarkDisplay text={remark.text} />
                             </div>
                           </div>
-                        )))}
+                        ))}
                       </div>
 
                     </TableCell>
@@ -379,10 +374,6 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                           <DropdownMenuItem onSelect={() => {setRemarksTask(task); setIsRemarksSheetOpen(true);}}>
                               <MessageSquare className="mr-2 h-4 w-4" />
                               {task.status === 'complete' ? 'View Remarks' : 'Add Remark'}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => {setAiSuggestionTask(task); setIsAiDialogOpen(true);}} disabled={task.status === 'complete'}>
-                            <WandSparkles className="mr-2 h-4 w-4" />
-                            Suggest AI To-Do
                           </DropdownMenuItem>
                           <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => handleDeleteTask(task.id)}>
                             <Trash2 className="mr-2 h-4 w-4" />
@@ -415,12 +406,6 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         open={isTaskDialogOpen}
         onOpenChange={setIsTaskDialogOpen}
         onSave={handleSaveTask}
-      />
-      <AiSuggestionDialog
-        task={aiSuggestionTask}
-        open={isAiDialogOpen}
-        onOpenChange={setIsAiDialogOpen}
-        onUpdateTask={handleUpdateTask}
       />
       <TaskRemarksSheet
         task={remarksTask}

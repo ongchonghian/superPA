@@ -26,6 +26,7 @@ import {
   FileUp,
   FileDown,
   MoreVertical,
+  WandSparkles,
 } from 'lucide-react';
 
 interface ChecklistHeaderProps {
@@ -37,6 +38,7 @@ interface ChecklistHeaderProps {
   onInitiateImport: (mode: 'new' | 'current') => void;
   onExportMarkdown: () => void;
   onExportPdf: () => void;
+  onGetAiSuggestions: () => void;
   progress: number;
   hasActiveChecklist: boolean;
 }
@@ -50,6 +52,7 @@ export function ChecklistHeader({
   onInitiateImport,
   onExportMarkdown,
   onExportPdf,
+  onGetAiSuggestions,
   progress,
   hasActiveChecklist,
 }: ChecklistHeaderProps) {
@@ -98,6 +101,9 @@ export function ChecklistHeader({
           )}
           <Button onClick={onAdd} size="sm">
             <Plus className="mr-2 h-4 w-4" /> New
+          </Button>
+           <Button onClick={onGetAiSuggestions} size="sm" variant="outline" disabled={!hasActiveChecklist}>
+            <WandSparkles className="mr-2 h-4 w-4" /> Suggest AI To-Dos
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
