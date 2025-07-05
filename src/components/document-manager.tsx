@@ -56,66 +56,75 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
     setIsDiagnosing(true);
     setDiagnosticResult(null);
 
-    if (!storage || !auth) {
-      setDiagnosticResult({
-        success: false,
-        message: 'Firebase Not Initialized',
-        details: 'The Firebase storage or auth service could not be found. Check your .env.local file and restart the backend.',
-      });
-      setIsDiagnosing(false);
-      return;
-    }
+    const TIMEOUT_DURATION = 15000; // 15 seconds
 
-    if (!auth.currentUser) {
-      setDiagnosticResult({
-        success: false,
-        message: 'Not Authenticated',
-        details: 'No user is signed in. The app must authenticate before it can upload files. Please refresh the page.',
-      });
-      setIsDiagnosing(false);
-      return;
-    }
+    const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => {
+            reject(new Error('Diagnostic test timed out. This often indicates a network issue or a problem with your Firebase project configuration that prevents a response. Please check your browser\'s developer console for network errors.'));
+        }, TIMEOUT_DURATION);
+    });
 
-    const testFilePath = `diagnostics/upload-test-${auth.currentUser.uid}-${Date.now()}.txt`;
-    const testFileRef = storageRef(storage, testFilePath);
-    const testContent = `This is a diagnostic file uploaded by user ${auth.currentUser.uid} at ${new Date().toISOString()}.`;
+    const diagnosticWork = async () => {
+        if (!storage || !auth) {
+            throw new Error('Firebase Not Initialized. The Firebase storage or auth service could not be found. Check your .env.local file and restart the backend.');
+        }
+
+        if (!auth.currentUser) {
+            throw new Error('Not Authenticated. No user is signed in. The app must authenticate before it can upload files. Please refresh the page.');
+        }
+
+        const testFilePath = `diagnostics/upload-test-${auth.currentUser.uid}-${Date.now()}.txt`;
+        const testFileRef = storageRef(storage, testFilePath);
+        const testContent = `This is a diagnostic file uploaded by user ${auth.currentUser.uid} at ${new Date().toISOString()}.`;
+        
+        await uploadString(testFileRef, testContent, 'raw');
+
+        // Success! Now try to clean up.
+        try {
+            await deleteObject(testFileRef);
+        } catch (deleteError) {
+            console.warn('Diagnostic test file cleanup failed, but the upload was successful. You may need to delete the test file manually from your storage bucket.', deleteError);
+        }
+
+        return {
+            success: true,
+            message: 'Upload Successful!',
+            details: `A test file was successfully written to your Firebase Storage bucket at: ${testFilePath}. The file was automatically deleted after the test.`,
+        };
+    };
 
     try {
-      await uploadString(testFileRef, testContent, 'raw');
-      
-      setDiagnosticResult({
-        success: true,
-        message: 'Upload Successful!',
-        details: `A test file was successfully written to your Firebase Storage bucket at: ${testFilePath}. The file was deleted after the test.`,
-      });
-
-      // Clean up the test file
-      try {
-        await deleteObject(testFileRef);
-      } catch (deleteError) {
-        console.warn('Diagnostic test file cleanup failed. You may need to delete it manually from your storage bucket.', deleteError);
-      }
-
+        const result = await Promise.race([diagnosticWork(), timeoutPromise]);
+        setDiagnosticResult(result as any);
     } catch (error: any) {
-      console.error('Diagnostic upload failed:', error);
-      let message = 'Upload Failed';
-      let details = `An unexpected error occurred: ${error.message || 'Unknown error.'}`;
+        console.error('Diagnostic test failed:', error);
+        let message = 'Upload Failed';
+        let details = `An unexpected error occurred: ${error.message || 'Unknown error.'}`;
+        
+        if (error.code === 'storage/unauthorized') {
+            message = 'Permission Denied';
+            details = "Your security rules are preventing the upload. Ensure your Storage security rules allow writes for authenticated users: `allow write: if request.auth != null;`";
+        } else if (error.code === 'storage/object-not-found') {
+            message = 'Storage Bucket Not Found (404)';
+            details = "The upload failed because the Storage Bucket could not be found (404 Error). This is the most common setup issue and is almost always caused by an incorrect value for `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` in your `.env.local` file.\n\n**Correct format:** `your-project-id.appspot.com`\n**Incorrect format:** `your-project-id.firebasestorage.com`\n\nPlease verify the value is correct, save the `.env.local` file, and **restart the backend**.";
+        } else if (error.message.includes('Firebase Not Initialized')) {
+            message = 'Firebase Not Initialized';
+            details = error.message;
+        } else if (error.message.includes('Not Authenticated')) {
+            message = 'Not Authenticated';
+            details = error.message;
+        } else if (error.message.includes('Diagnostic test timed out')) {
+            message = 'Test Timed Out';
+            details = error.message;
+        }
 
-      if (error.code === 'storage/unauthorized') {
-        message = 'Permission Denied';
-        details = "Your security rules are preventing the upload. Ensure your Storage security rules allow writes for authenticated users: `allow write: if request.auth != null;`";
-      } else if (error.code === 'storage/object-not-found') {
-         message = 'Storage Bucket Not Found (404)';
-         details = "The upload failed because the Storage Bucket could not be found (404 Error). This is the most common setup issue and is almost always caused by an incorrect value for `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` in your `.env.local` file.\n\n**Correct format:** `your-project-id.appspot.com`\n**Incorrect format:** `your-project-id.firebasestorage.com`\n\nPlease verify the value is correct, save the `.env.local` file, and **restart the backend**.";
-      }
-
-      setDiagnosticResult({
-        success: false,
-        message: message,
-        details: details,
-      });
+        setDiagnosticResult({
+            success: false,
+            message: message,
+            details: details,
+        });
     } finally {
-      setIsDiagnosing(false);
+        setIsDiagnosing(false);
     }
   };
 
