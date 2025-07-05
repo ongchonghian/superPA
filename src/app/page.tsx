@@ -131,13 +131,22 @@ export default function Home() {
       try {
         await deleteDoc(doc(db, 'checklists', id));
         toast({ title: "Success", description: "Checklist deleted." });
-        // The useEffect for checklistMetas will handle switching to another checklist or the empty state
+        
+        // Explicitly handle switching the active checklist if the deleted one was active.
+        if (activeChecklistId === id) {
+          const remainingMetas = checklistMetas.filter(c => c.id !== id);
+          if (remainingMetas.length > 0) {
+            setActiveChecklistId(remainingMetas[0].id);
+          } else {
+            setActiveChecklistId(null);
+          }
+        }
       } catch (error) {
         console.error("Error deleting checklist: ", error);
         toast({ title: "Error", description: "Failed to delete checklist.", variant: "destructive" });
       }
     }
-  }, [toast]);
+  }, [toast, activeChecklistId, checklistMetas]);
   
   const handleInitiateImport = (mode: 'new' | 'current') => {
     setImportMode(mode);
