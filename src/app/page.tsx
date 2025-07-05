@@ -6,8 +6,9 @@ import { TaskTable } from '@/components/task-table';
 import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
-import { isFirebaseConfigured, db } from '@/lib/firebase';
+import { isFirebaseConfigured, db, storage } from '@/lib/firebase';
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
+import { ref as storageRef, uploadBytes, deleteObject } from 'firebase/storage';
 import {
   collection,
   query,
@@ -31,16 +32,6 @@ import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-ste
 import { TaskDialog } from '@/components/task-dialog';
 import { TaskRemarksSheet } from '@/components/task-remarks-sheet';
 import { DocumentManager } from '@/components/document-manager';
-
-// Helper to convert a File to a Base64 Data URI
-const fileToDataUri = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
-};
 
 export default function Home() {
   const { toast } = useToast();
@@ -474,12 +465,11 @@ export default function Home() {
         discussionHistory: task.remarks.map(r => `${r.userId}: ${r.text}`).join('\n')
       }));
 
-      const contextDocuments = documents
-        .filter(doc => doc.status === 'ready')
-        .map(doc => ({
+      const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+      const contextDocuments = documents.map(doc => ({
             fileName: doc.fileName,
-            fileDataUri: doc.fileDataUri,
-        }));
+            fileUri: `gs://${storageBucket}/${doc.storagePath}`,
+      }));
 
       const result = await suggestChecklistNextSteps({ 
         tasks: tasksToAnalyze,
@@ -556,37 +546,35 @@ export default function Home() {
   }, [activeChecklist]);
 
   const handleUploadDocuments = useCallback(async (files: FileList) => {
-    if (!activeChecklist || !db) {
-        toast({ title: "Error", description: "No active checklist selected.", variant: "destructive" });
+    if (!activeChecklist || !db || !storage) {
+        toast({ title: "Error", description: "No active checklist selected or storage not configured.", variant: "destructive" });
         return;
     }
-    if (!isFirebaseConfigured) {
-      toast({ title: "Error", description: "Firebase is not configured for storage operations.", variant: "destructive" });
-      return;
-    }
-
+    
     setIsUploading(true);
     const uploadToast = toast({ title: "Uploading...", description: `Starting upload of ${files.length} document(s).` });
 
     try {
         const uploadPromises = Array.from(files).map(async (file) => {
-            if (file.size > 1024 * 1024) { // 1MB limit for Firestore documents
-                throw new Error(`File "${file.name}" is too large. The maximum size is 1MB.`);
-            }
-
-            const dataUri = await fileToDataUri(file);
+            const docId = `doc_${Date.now()}_${file.name}`;
+            const path = `checklists/${activeChecklist.id}/${docId}`;
+            const fileRef = storageRef(storage, path);
             
+            // Upload the file to Firebase Storage
+            await uploadBytes(fileRef, file);
+
+            // Create a document record in Firestore
             const newDocRef = doc(collection(db, "documents"));
             const batch = writeBatch(db);
 
             batch.set(newDocRef, {
                 checklistId: activeChecklist.id,
                 fileName: file.name,
-                fileDataUri: dataUri,
-                status: 'ready',
+                storagePath: path,
                 createdAt: new Date().toISOString(),
             });
 
+            // Associate document with checklist
             const checklistRef = doc(db, 'checklists', activeChecklist.id);
             batch.update(checklistRef, {
                 documentIds: arrayUnion(newDocRef.id)
@@ -600,19 +588,36 @@ export default function Home() {
         uploadToast.update({ id: uploadToast.id, title: "Upload complete", description: `${files.length} document(s) are ready for AI context.` });
     } catch (error: any) {
         console.error("Error uploading documents:", error);
-        uploadToast.update({ id: uploadToast.id, title: "Upload Failed", description: error.message || "Could not upload documents. Please try again.", variant: "destructive" });
+        let errorMessage = "Could not upload documents. Please try again.";
+        if (error.code === 'storage/unauthorized') {
+            errorMessage = "Permission denied. Please check your Firebase Storage security rules."
+        }
+        uploadToast.update({ id: uploadToast.id, title: "Upload Failed", description: errorMessage, variant: "destructive" });
     } finally {
         setIsUploading(false);
     }
   }, [activeChecklist, toast]);
 
   const handleDeleteDocument = useCallback(async (documentId: string) => {
-    if (!activeChecklist || !db) return;
+    if (!activeChecklist || !db || !storage) return;
 
-    const docRef = doc(db, 'documents', documentId);
     try {
+        const docToDeleteRef = doc(db, 'documents', documentId);
+        const docSnap = await getDoc(docToDeleteRef);
+
+        if (!docSnap.exists()) {
+            throw new Error("Document record not found.");
+        }
+        
+        const documentData = docSnap.data() as Document;
+        const fileRef = storageRef(storage, documentData.storagePath);
+
+        // Delete from Storage
+        await deleteObject(fileRef);
+
+        // Delete from Firestore
         const batch = writeBatch(db);
-        batch.delete(docRef);
+        batch.delete(docToDeleteRef);
 
         const checklistRef = doc(db, 'checklists', activeChecklist.id);
         batch.update(checklistRef, {
@@ -622,9 +627,24 @@ export default function Home() {
         await batch.commit();
 
         toast({ title: "Success", description: "Document deleted." });
-    } catch (error) {
+    } catch (error: any) {
         console.error("Error deleting document:", error);
-        toast({ title: "Error", description: "Failed to delete document.", variant: "destructive" });
+        let errorMessage = "Failed to delete document.";
+         if (error.code === 'storage/object-not-found') {
+            errorMessage = "File not found in storage, but database record was cleaned up."
+             // Still attempt to clean up firestore record if file is missing
+            try {
+                const docToDeleteRef = doc(db, 'documents', documentId);
+                const batch = writeBatch(db);
+                batch.delete(docToDeleteRef);
+                const checklistRef = doc(db, 'checklists', activeChecklist.id);
+                batch.update(checklistRef, { documentIds: arrayRemove(documentId) });
+                await batch.commit();
+            } catch (cleanupError) {
+                console.error("Error during cleanup:", cleanupError)
+            }
+        }
+        toast({ title: "Error", description: errorMessage, variant: "destructive" });
     }
 }, [activeChecklist, toast]);
   

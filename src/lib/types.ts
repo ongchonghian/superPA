@@ -28,13 +28,10 @@ export interface Checklist {
   documentIds?: string[]; // Array of document IDs associated with this checklist
 }
 
-export type DocumentStatus = 'ready' | 'failed';
-
 export interface Document {
-  id: string;
+  id:string;
   checklistId: string;
   fileName: string;
-  fileDataUri: string; // The content of the file as a data URI
-  status: DocumentStatus;
+  storagePath: string; // Path to the file in Firebase Storage
   createdAt: string; // ISO string for Firestore compatibility
 }

@@ -21,7 +21,7 @@ const TaskAnalysisSchema = z.object({
 
 const DocumentContextSchema = z.object({
   fileName: z.string(),
-  fileDataUri: z.string().describe("A document file, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."),
+  fileUri: z.string().describe("A document file, as a `gs://` URI to a file in Google Cloud Storage."),
 });
 
 const SuggestChecklistNextStepsInputSchema = z.object({
@@ -67,7 +67,7 @@ You have been provided with context documents. These documents are the primary s
 --- CONTEXT DOCUMENTS START ---
 {{#each contextDocuments}}
 ## Document: {{{fileName}}}
-{{{media url=fileDataUri}}}
+{{{media url=fileUri}}}
 
 ---
 {{/each}}
