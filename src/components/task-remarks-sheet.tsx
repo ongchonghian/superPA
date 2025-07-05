@@ -15,12 +15,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import type { Task, Remark } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
-import { Send } from 'lucide-react';
+import { Send, Pencil, Trash2 } from 'lucide-react';
 import {
     Popover,
     PopoverContent,
     PopoverAnchor,
 } from '@/components/ui/popover';
+import { Textarea } from './ui/textarea';
 
 interface TaskRemarksSheetProps {
   task: Task | null;
@@ -37,19 +38,30 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
     const [newRemark, setNewRemark] = useState('');
     const [mentionQuery, setMentionQuery] = useState('');
     const [isMentionPopoverOpen, setIsMentionPopoverOpen] = useState(false);
+    const [editingRemarkId, setEditingRemarkId] = useState<string | null>(null);
+    const [editingText, setEditingText] = useState('');
+    
     const inputRef = useRef<HTMLInputElement>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (open && scrollAreaRef.current) {
-            // Scroll to the bottom when the sheet opens or when new remarks are added
+            // Scroll to the bottom when the sheet opens or when new remarks are added/edited/deleted
             setTimeout(() => {
                 if (scrollAreaRef.current) {
                     scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
                 }
             }, 100);
         }
-    }, [open, task?.remarks.length]);
+    }, [open, task?.remarks]);
+
+    useEffect(() => {
+        // Reset editing state when the sheet is closed
+        if (!open) {
+            setEditingRemarkId(null);
+            setEditingText('');
+        }
+    }, [open]);
 
     const handleAddRemark = () => {
         if (!task || !newRemark.trim()) return;
@@ -65,6 +77,37 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
         };
         onUpdateTask(updatedTask);
         setNewRemark('');
+    };
+
+    const handleEditStart = (remark: Remark) => {
+        setEditingRemarkId(remark.id);
+        setEditingText(remark.text);
+    };
+
+    const handleEditCancel = () => {
+        setEditingRemarkId(null);
+        setEditingText('');
+    };
+
+    const handleEditSave = () => {
+        if (!task || !editingRemarkId) return;
+        
+        const updatedRemarks = task.remarks.map(r => 
+            r.id === editingRemarkId ? { ...r, text: editingText } : r
+        );
+        
+        const updatedTask = { ...task, remarks: updatedRemarks };
+        onUpdateTask(updatedTask);
+        handleEditCancel();
+    };
+
+    const handleDeleteRemark = (remarkId: string) => {
+        if (!task) return;
+        if (window.confirm('Are you sure you want to delete this remark?')) {
+            const updatedRemarks = task.remarks.filter(r => r.id !== remarkId);
+            const updatedTask = { ...task, remarks: updatedRemarks };
+            onUpdateTask(updatedTask);
+        }
     };
 
     const handleRemarkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -132,18 +175,48 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
                     <div className="space-y-4 py-4 px-4 sm:px-6">
                         {task.remarks.length > 0 ? (
                             [...task.remarks].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map(remark => (
-                                <div key={remark.id} className="flex items-start gap-3">
+                                <div key={remark.id} className="group flex items-start gap-3">
                                     <Avatar className="h-8 w-8 border">
                                         <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 bg-muted/50 rounded-lg p-3">
-                                        <div className="flex items-center gap-2">
-                                            <p className="font-semibold text-sm text-foreground">{remark.userId}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
-                                            </p>
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-semibold text-sm text-foreground">{remark.userId}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
+                                                </p>
+                                            </div>
+                                            {remark.userId === USER_ID && editingRemarkId !== remark.id && !isComplete && (
+                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditStart(remark)}>
+                                                        <Pencil className="h-3 w-3" />
+                                                        <span className="sr-only">Edit</span>
+                                                    </Button>
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleDeleteRemark(remark.id)}>
+                                                        <Trash2 className="h-3 w-3" />
+                                                        <span className="sr-only">Delete</span>
+                                                    </Button>
+                                                </div>
+                                            )}
                                         </div>
-                                        <p className="text-sm text-foreground/90 whitespace-pre-wrap">{remark.text}</p>
+                                        {editingRemarkId === remark.id ? (
+                                            <div className="mt-2 space-y-2">
+                                                <Textarea 
+                                                    value={editingText} 
+                                                    onChange={(e) => setEditingText(e.target.value)}
+                                                    className="text-sm"
+                                                    rows={3}
+                                                    autoFocus
+                                                />
+                                                <div className="flex justify-end gap-2">
+                                                    <Button variant="ghost" size="sm" onClick={handleEditCancel}>Cancel</Button>
+                                                    <Button size="sm" onClick={handleEditSave}>Save Changes</Button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <p className="text-sm text-foreground/90 whitespace-pre-wrap mt-1">{remark.text}</p>
+                                        )}
                                     </div>
                                 </div>
                             ))
