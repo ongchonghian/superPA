@@ -1,5 +1,6 @@
 
 import { initializeApp, getApps, getApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
@@ -13,6 +14,7 @@ const firebaseConfig: FirebaseOptions = {
 };
 
 let app: FirebaseApp | null = null;
+let auth: Auth | null = null;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
 
@@ -30,6 +32,7 @@ if (isFirebaseConfigured) {
   try {
     // Initialize Firebase services only if the config is valid.
     app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+    auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
   } catch(e) {
@@ -41,4 +44,4 @@ if (isFirebaseConfigured) {
     console.log("Firebase configuration is missing in .env. The app will not connect to Firebase.");
 }
 
-export { app, db, storage };
+export { app, auth, db, storage };
