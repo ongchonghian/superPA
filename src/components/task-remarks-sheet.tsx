@@ -163,6 +163,10 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
     if (!task) return null;
 
     const isComplete = task.status === 'complete';
+    
+    const sortedRemarks = [...task.remarks].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const aiTodos = sortedRemarks.filter(r => r.text.startsWith('[ai-todo|'));
+    const regularRemarks = sortedRemarks.filter(r => !r.text.startsWith('[ai-todo|'));
 
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
@@ -174,7 +178,33 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
                 <ScrollArea className="flex-1 my-4 -mx-4 sm:-mx-6" viewportRef={scrollAreaRef}>
                     <div className="space-y-4 py-4 px-4 sm:px-6">
                         {task.remarks.length > 0 ? (
-                            [...task.remarks].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map(remark => (
+                            <>
+                                {aiTodos.map(remark => (
+                                    <div key={remark.id} className="group flex items-start gap-3">
+                                        <Avatar className="h-8 w-8 border">
+                                            <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex-1 bg-muted/50 rounded-lg p-3">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-semibold text-sm text-foreground">{remark.userId}</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <p className="text-sm text-foreground/90 whitespace-pre-wrap mt-1">{remark.text}</p>
+                                        </div>
+                                    </div>
+                                ))}
+
+                                {aiTodos.length > 0 && regularRemarks.length > 0 && (
+                                    <div className="py-2">
+                                        <hr className="border-dashed" />
+                                    </div>
+                                )}
+
+                                {regularRemarks.map(remark => (
                                 <div key={remark.id} className="group flex items-start gap-3">
                                     <Avatar className="h-8 w-8 border">
                                         <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
@@ -219,7 +249,8 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
                                         )}
                                     </div>
                                 </div>
-                            ))
+                                ))}
+                            </>
                         ) : (
                             <p className="text-sm text-muted-foreground text-center py-8">No remarks yet.</p>
                         )}

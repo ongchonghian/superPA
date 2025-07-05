@@ -293,7 +293,12 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
           </TableHeader>
           <TableBody>
             {filteredAndSortedTasks.length > 0 ? (
-              filteredAndSortedTasks.map(task => (
+              filteredAndSortedTasks.map(task => {
+                const sortedRemarks = task.remarks.slice().sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                const aiTodos = sortedRemarks.filter(r => r.text.startsWith('[ai-todo|'));
+                const regularRemarks = sortedRemarks.filter(r => !r.text.startsWith('[ai-todo|'));
+
+                return (
                 <TableRow key={task.id} data-state={task.status === 'complete' ? 'completed' : 'pending'}>
                   <TableCell className="p-2 align-top">
                      <Checkbox
@@ -305,29 +310,47 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                   </TableCell>
                   <TableCell className={`font-medium align-top ${task.status === 'complete' ? 'text-muted-foreground' : ''}`}>
                     <div className={task.status === 'complete' ? 'line-through' : ''}>{task.description}</div>
-                    {task.remarks && task.remarks.length > 0 && (
-                      <div className="mt-4 space-y-3">
-                        {task.remarks
-                          .slice()
-                          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-                          .map(remark => (
-                          <div key={remark.id} className="flex items-start gap-2.5">
-                            <Avatar className="h-6 w-6 border text-xs">
-                                <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <div className="grid gap-0.5 flex-1">
-                                <div className="flex items-center gap-2">
-                                    <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
-                                    </p>
-                                </div>
-                                <RemarkDisplay text={remark.text} />
-                            </div>
+                    
+                    <div className="mt-4 space-y-3">
+                      {aiTodos.map(remark => (
+                        <div key={remark.id} className="flex items-start gap-2.5">
+                          <Avatar className="h-6 w-6 border text-xs">
+                              <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <div className="grid gap-0.5 flex-1">
+                              <div className="flex items-center gap-2">
+                                  <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                      {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
+                                  </p>
+                              </div>
+                              <RemarkDisplay text={remark.text} />
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        </div>
+                      ))}
+
+                      {aiTodos.length > 0 && regularRemarks.length > 0 && (
+                        <div className="py-2"><hr className="border-dashed" /></div>
+                      )}
+
+                      {regularRemarks.map(remark => (
+                        <div key={remark.id} className="flex items-start gap-2.5">
+                          <Avatar className="h-6 w-6 border text-xs">
+                              <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
+                          </Avatar>
+                          <div className="grid gap-0.5 flex-1">
+                              <div className="flex items-center gap-2">
+                                  <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                      {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
+                                  </p>
+                              </div>
+                              <RemarkDisplay text={remark.text} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
                   </TableCell>
                   <TableCell className="align-top">{task.assignee}</TableCell>
                   <TableCell className="align-top">
@@ -367,7 +390,8 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                     </DropdownMenu>
                   </TableCell>
                 </TableRow>
-              ))
+              );
+            })
             ) : (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center">
