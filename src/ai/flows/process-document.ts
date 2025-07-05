@@ -10,12 +10,11 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 import { doc, updateDoc } from 'firebase/firestore';
-import { getBytes, ref } from 'firebase/storage';
-import { db, storage } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 
 const ProcessDocumentInputSchema = z.object({
   documentId: z.string().describe("The ID of the document in Firestore."),
-  storagePath: z.string().describe("The full path to the file in Firebase Storage."),
+  fileDataUri: z.string().describe("The content of the file as a data URI."),
 });
 export type ProcessDocumentInput = z.infer<typeof ProcessDocumentInputSchema>;
 
@@ -29,15 +28,11 @@ const processDocumentFlow = ai.defineFlow(
     inputSchema: ProcessDocumentInputSchema,
     outputSchema: z.void(),
   },
-  async ({ documentId, storagePath }) => {
+  async ({ documentId, fileDataUri }) => {
     const docRef = doc(db, 'documents', documentId);
 
     try {
-      // 1. Download file from Firebase Storage
-      const fileRef = ref(storage, storagePath);
-      const fileBytes = await getBytes(fileRef);
-      // Let Gemini infer mime type from bytes
-      const dataUri = `data:application/octet-stream;base64,${Buffer.from(fileBytes).toString('base64')}`;
+      // The file is passed directly as a data URI, no download needed.
 
       // 2. Use Gemini to convert to Markdown
       const { text } = await ai.generate({
@@ -47,7 +42,7 @@ const processDocumentFlow = ai.defineFlow(
 - Retain all important information, including text, headings, lists, and tables.
 - Preserve the document's structure as much as possible.
 - Do not add any commentary or extra text that was not in the original document.` },
-          { media: { url: dataUri } }
+          { media: { url: fileDataUri } }
         ],
       });
 

@@ -37,6 +37,15 @@ import { DocumentManager } from '@/components/document-manager';
 // In a real app, you would get this from your auth provider.
 const USER_ID = "user_123";
 
+const fileToDataUri = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 export default function Home() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(true);
@@ -52,6 +61,10 @@ export default function Home() {
   const [aiAnalysisResult, setAiAnalysisResult] = useState<SuggestChecklistNextStepsOutput | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [remarksTask, setRemarksTask] = useState<Task | null>(null);
+  const [isRemarksSheetOpen, setIsRemarksSheetOpen] = useState(false);
+  const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
+  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
 
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
@@ -60,15 +73,15 @@ export default function Home() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
-      
-      const newActiveChecklistId = currentId => {
+
+      setActiveChecklistId(currentId => {
+        // If current active ID is still valid, keep it.
         if (metas.some(m => m.id === currentId)) {
           return currentId;
         }
+        // Otherwise, pick the first one, or null if empty.
         return metas.length > 0 ? metas[0].id : null;
-      };
-
-      setActiveChecklistId(newActiveChecklistId);
+      });
 
       if (metas.length === 0) {
         setActiveChecklist(null);
@@ -168,9 +181,10 @@ export default function Home() {
   const handleDeleteChecklist = useCallback(async (id: string) => {
     if (window.confirm("Are you sure you want to delete this checklist? This action cannot be undone.")) {
       try {
+        // The onSnapshot listener for `checklistMetas` will automatically handle
+        // updating the UI to select a new checklist or show the empty state.
         await deleteDoc(doc(db, 'checklists', id));
         toast({ title: "Success", description: "Checklist deleted." });
-        // The useEffect hook for checklistMetas will handle switching to a new checklist or the empty state.
       } catch (error) {
         console.error("Error deleting checklist: ", error);
         toast({ title: "Error", description: "Failed to delete checklist.", variant: "destructive" });
@@ -446,6 +460,7 @@ export default function Home() {
     }
 
     setIsAiLoading(true);
+    setIsAiDialogOpen(true);
 
     try {
       const tasksToAnalyze = incompleteTasks.map(task => ({
@@ -484,11 +499,6 @@ export default function Home() {
       setIsAiLoading(false);
     }
   }, [activeChecklist, documents, toast]);
-
-  const handleGetAiSuggestions = useCallback(() => {
-    setIsAiDialogOpen(true);
-    fetchAiSuggestions();
-  }, [fetchAiSuggestions]);
 
   const handleAddSuggestionAsRemark = useCallback((suggestionToAdd: ChecklistSuggestion) => {
     if (!activeChecklist) return;
@@ -532,9 +542,9 @@ export default function Home() {
     if (!activeChecklist) return;
     const task = activeChecklist.tasks.find(t => t.id === taskId);
     if (task) {
-      setIsAiDialogOpen(false);
-      const event = new CustomEvent('open-remarks', { detail: task });
-      window.dispatchEvent(event);
+      setIsAiDialogOpen(false); // Close the AI dialog
+      setRemarksTask(task);     // Set the task for the remarks sheet
+      setIsRemarksSheetOpen(true); // Open the remarks sheet
     }
   }, [activeChecklist]);
 
@@ -569,8 +579,11 @@ export default function Home() {
         });
         await batch.commit();
         
+        // Convert file to data URI and trigger processing
+        const fileDataUri = await fileToDataUri(file);
+        
         // Trigger background processing, do not await
-        processDocument({ documentId: newDocRef.id, storagePath });
+        processDocument({ documentId: newDocRef.id, fileDataUri });
       });
 
       await Promise.all(uploadPromises);
@@ -621,40 +634,31 @@ export default function Home() {
     return (completedTasks / activeChecklist.tasks.length) * 100;
   }, [activeChecklist]);
 
-  const [remarksTask, setRemarksTask] = useState<Task | null>(null);
-  const [isRemarksSheetOpen, setIsRemarksSheetOpen] = useState(false);
-
-  useEffect(() => {
-    const handleOpenRemarks = (event: Event) => {
-      const customEvent = event as CustomEvent<Task>;
-      setRemarksTask(customEvent.detail);
-      setIsRemarksSheetOpen(true);
-    };
-
-    const handleOpenTask = (event: Event) => {
-        const customEvent = event as CustomEvent<Partial<Task>>;
-        const eventTask = customEvent.detail;
-        const taskToOpen = activeChecklist?.tasks.find(t => t.id === eventTask.id) || eventTask;
-        setDialogTask(taskToOpen);
-        setIsTaskDialogOpen(true);
-    }
-    
-    window.addEventListener('open-remarks', handleOpenRemarks);
-    window.addEventListener('open-task-dialog', handleOpenTask);
-    
-    return () => {
-      window.removeEventListener('open-remarks', handleOpenRemarks);
-      window.removeEventListener('open-task-dialog', handleOpenTask);
-    };
-  }, [activeChecklist]);
-  
-  const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
-  const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
-
   const assignees = useMemo(() => {
     if (!activeChecklist) return [];
     return [...new Set(activeChecklist.tasks.map(t => t.assignee))];
   }, [activeChecklist]);
+
+  const handleUpdateTask = useCallback((taskToUpdate: Task) => {
+    if (!activeChecklist) return;
+    const newTasks = activeChecklist.tasks.map(t => (t.id === taskToUpdate.id ? taskToUpdate : t));
+    handleUpdateChecklist({ ...activeChecklist, tasks: newTasks });
+  }, [activeChecklist, handleUpdateChecklist]);
+
+  const handleSaveTask = useCallback((taskToSave: Omit<Task, 'remarks'>) => {
+      if (!activeChecklist) return; // Guard against no active checklist
+      const exists = activeChecklist.tasks.some(t => t.id === taskToSave.id);
+      if (exists) {
+        const existingTask = activeChecklist.tasks.find(t => t.id === taskToSave.id)!;
+        const updatedTask = { ...existingTask, ...taskToSave };
+        handleUpdateTask(updatedTask);
+      } else {
+        const newTask = {...taskToSave, remarks: []};
+        const newTasks = [...activeChecklist.tasks, newTask];
+        handleUpdateChecklist({ ...activeChecklist, tasks: newTasks });
+      }
+  },[activeChecklist, handleUpdateChecklist]);
+
 
   if (isLoading && !activeChecklist) {
     return <Loading />;
@@ -678,7 +682,7 @@ export default function Home() {
         onInitiateImport={handleInitiateImport}
         onExportMarkdown={handleExportMarkdown}
         onExportPdf={handleExportPdf}
-        onGetAiSuggestions={handleGetAiSuggestions}
+        onGetAiSuggestions={fetchAiSuggestions}
         progress={progress}
         hasActiveChecklist={!!activeChecklist}
       />
@@ -751,30 +755,13 @@ export default function Home() {
         task={dialogTask}
         open={isTaskDialogOpen}
         onOpenChange={setIsTaskDialogOpen}
-        onSave={(taskToSave) => {
-          if (!activeChecklist) return; // Guard against no active checklist
-          const exists = activeChecklist.tasks.some(t => t.id === taskToSave.id);
-          if (exists) {
-            const existingTask = activeChecklist.tasks.find(t => t.id === taskToSave.id)!;
-            const updatedTask = { ...existingTask, ...taskToSave };
-            const newTasks = activeChecklist.tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
-            handleUpdateChecklist({ ...activeChecklist, tasks: newTasks });
-          } else {
-            const newTask = {...taskToSave, remarks: []};
-            const newTasks = [...activeChecklist.tasks, newTask];
-            handleUpdateChecklist({ ...activeChecklist, tasks: newTasks });
-          }
-        }}
+        onSave={handleSaveTask}
       />
       <TaskRemarksSheet
         task={remarksTask}
         open={isRemarksSheetOpen}
         onOpenChange={setIsRemarksSheetOpen}
-        onUpdateTask={(taskToUpdate) => {
-            if (!activeChecklist) return;
-            const newTasks = activeChecklist.tasks.map(t => (t.id === taskToUpdate.id ? taskToUpdate : t));
-            handleUpdateChecklist({ ...activeChecklist, tasks: newTasks });
-        }}
+        onUpdateTask={handleUpdateTask}
         assignees={assignees}
       />
     </div>
