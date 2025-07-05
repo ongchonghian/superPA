@@ -99,14 +99,14 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
     } catch (error: any) {
       console.error('Diagnostic upload failed:', error);
       let message = 'Upload Failed';
-      let details = error.message;
+      let details = `An unexpected error occurred: ${error.message || 'Unknown error.'}`;
 
       if (error.code === 'storage/unauthorized') {
         message = 'Permission Denied';
         details = "Your security rules are preventing the upload. Ensure your Storage security rules allow writes for authenticated users: `allow write: if request.auth != null;`";
-      } else if (error.code === 'storage/object-not-found' && error.message.includes('storage/unauthorized')) {
-         message = 'Permission Denied or Bucket Not Found';
-         details = "Please check that your Storage security rules are correct AND that the `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` in your `.env.local` file is correct and exists."
+      } else if (error.code === 'storage/object-not-found') {
+         message = 'Storage Bucket Not Found (404)';
+         details = "The upload failed because the storage bucket could not be found. This is almost always caused by an incorrect value for `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET` in your `.env.local` file. Please verify that the value is correct and uses the format `your-project-id.appspot.com`. It should not be a full URL.";
       }
 
       setDiagnosticResult({
