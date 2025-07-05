@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useMemo } from 'react';
@@ -34,7 +35,7 @@ import {
   WandSparkles,
 } from 'lucide-react';
 import type { Checklist, Task, TaskPriority, TaskStatus } from '@/lib/types';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { TaskDialog } from './task-dialog';
 import { AiSuggestionDialog } from './ai-suggestion-dialog';
 import { TaskRemarksSheet } from './task-remarks-sheet';
@@ -164,7 +165,7 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>
+              <TableHead className="w-[40%]">
                 <Button variant="ghost" onClick={() => handleSort('description')}>
                   Task <ArrowUpDown className="ml-2 h-4 w-4" />
                 </Button>
@@ -192,20 +193,33 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
             {filteredAndSortedTasks.length > 0 ? (
               filteredAndSortedTasks.map(task => (
                 <TableRow key={task.id} className={task.status === 'complete' ? 'bg-muted/50' : ''}>
-                  <TableCell className={`font-medium ${task.status === 'complete' ? 'text-muted-foreground line-through' : ''}`}>
-                    {task.description}
+                  <TableCell className={`font-medium align-top ${task.status === 'complete' ? 'text-muted-foreground' : ''}`}>
+                    <div className={task.status === 'complete' ? 'line-through' : ''}>{task.description}</div>
+                    {task.remarks && task.remarks.length > 0 && (
+                      <div className="mt-2 space-y-2 pl-4 border-l-2 border-border/80">
+                        {task.remarks.map(remark => (
+                          <div key={remark.id} className="text-xs">
+                            <div className="flex items-baseline gap-2">
+                              <span className="font-semibold text-foreground">{remark.userId}</span>
+                              <span className="text-muted-foreground">{formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}</span>
+                            </div>
+                            <p className="text-muted-foreground pl-1 whitespace-pre-wrap">{remark.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </TableCell>
-                  <TableCell>{task.assignee}</TableCell>
-                  <TableCell>
+                  <TableCell className="align-top">{task.assignee}</TableCell>
+                  <TableCell className="align-top">
                     <Badge variant="outline" className={priorityColors[task.priority]}>{task.priority}</Badge>
                   </TableCell>
-                  <TableCell>{format(parseISO(task.dueDate), 'MMM dd, yyyy')}</TableCell>
-                  <TableCell>
+                  <TableCell className="align-top">{format(parseISO(task.dueDate), 'MMM dd, yyyy')}</TableCell>
+                  <TableCell className="align-top">
                     <Badge variant="outline" className={statusColors[task.status]}>
                       {task.status}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right no-print">
+                  <TableCell className="text-right align-top no-print">
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="h-8 w-8 p-0">
@@ -219,7 +233,7 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => {setRemarksTask(task); setIsRemarksSheetOpen(true);}}>
                             <MessageSquare className="mr-2 h-4 w-4" />
-                            View/Add Remarks
+                            Add Remark
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => {setAiSuggestionTask(task); setIsAiDialogOpen(true);}}>
                           <WandSparkles className="mr-2 h-4 w-4" />
