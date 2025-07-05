@@ -199,39 +199,46 @@ export default function Home() {
             if (currentTask) {
               newTasks.push(currentTask);
             }
-            const [, statusChar, restOfLine] = taskMatch;
-            let description = restOfLine.trim();
+            
+            const [, statusChar, taskContent] = taskMatch;
+            let description = taskContent.trim();
             let priority: TaskPriority = 'Medium';
             let assignee = 'Unassigned';
             let dueDate = new Date().toISOString().split('T')[0];
 
-            const detailsMatch = description.match(/(.*)\((.*)\)$/);
-            if (detailsMatch && detailsMatch[2]) {
-                description = detailsMatch[1].trim();
-                const detailsStr = detailsMatch[2];
-                const detailsArr = detailsStr.split(',').map(d => d.trim());
-
-                detailsArr.forEach(detail => {
-                    const [key, ...valueParts] = detail.split(':').map(p => p.trim());
-                    const value = valueParts.join(':');
-
-                    if (key.toLowerCase() === 'priority') {
-                        const parsedPriority = value as TaskPriority;
-                        if (PRIORITIES.includes(parsedPriority)) {
-                            priority = parsedPriority;
-                        }
-                    } else if (key.toLowerCase() === 'assignee') {
-                        assignee = value;
-                    } else if (key.toLowerCase() === 'due') {
-                        try {
-                            const parsedDate = new Date(value);
-                            if (!isNaN(parsedDate.getTime())) {
-                                dueDate = parsedDate.toISOString().split('T')[0];
-                            }
-                        } catch (error) { /* keep default if date is invalid */ }
-                    }
-                });
+            const assigneeMatch = description.match(/-\s*\*Assignee:\s*\[(.*?)\]\*/);
+            if (assigneeMatch) {
+              assignee = assigneeMatch[1].trim();
+              description = description.substring(0, assigneeMatch.index).trim();
             }
+            
+            const detailsMatch = description.match(/\(([^)]+)\)$/);
+            if (detailsMatch) {
+              const detailsStr = detailsMatch[1];
+              description = description.substring(0, detailsMatch.index).trim();
+
+              const detailsArr = detailsStr.split(',').map(d => d.trim());
+              detailsArr.forEach(detail => {
+                const [key, ...valueParts] = detail.split(':').map(p => p.trim());
+                const value = valueParts.join(':').trim();
+
+                if (key.toLowerCase() === 'priority') {
+                  const parsedPriority = value as TaskPriority;
+                  if (PRIORITIES.includes(parsedPriority)) {
+                    priority = parsedPriority;
+                  }
+                } else if (key.toLowerCase() === 'due') {
+                  try {
+                    const parsedDate = new Date(value);
+                    if (!isNaN(parsedDate.getTime())) {
+                      dueDate = parsedDate.toISOString().split('T')[0];
+                    }
+                  } catch (error) { /* keep default if date is invalid */ }
+                }
+              });
+            }
+            
+            description = description.replace(/\*\*/g, '').replace(/\*/g, '');
 
             currentTask = {
               id: `task_${Date.now()}_${Math.random()}`,
@@ -242,19 +249,30 @@ export default function Home() {
             continue;
           }
 
-          const remarkMatch = line.match(/^\s{2,}-\s+(.*)/);
+          const remarkMatch = line.match(/^\s*(?:-\s*)?>\s*(.*)/);
           if (remarkMatch && currentTask) {
-            let text = remarkMatch[1].trim();
+            let fullRemarkText = remarkMatch[1].trim();
+            let text = fullRemarkText;
             let userId = 'system';
             let timestamp = new Date().toISOString();
-            const remarkDetailsMatch = text.match(/(.*) \[(.*) @ (.*)\]/);
-            if (remarkDetailsMatch) {
-              text = remarkDetailsMatch[1].trim();
-              userId = remarkDetailsMatch[2].trim();
-              try {
-                const parsedTimestamp = new Date(remarkDetailsMatch[3].trim());
-                if(!isNaN(parsedTimestamp.getTime())) { timestamp = parsedTimestamp.toISOString(); }
-              } catch (error) { /* keep default timestamp if invalid */ }
+
+            const userMatch = fullRemarkText.match(/(.*)\(by (.*)\)$/);
+            if (userMatch) {
+                text = userMatch[1].trim();
+                userId = userMatch[2].trim();
+            }
+
+            const timestampMatch = text.match(/^#(\d{8})\s*(.*)/);
+            if (timestampMatch) {
+                const dateStr = timestampMatch[1];
+                text = timestampMatch[2].trim();
+                const year = dateStr.substring(0, 4);
+                const month = dateStr.substring(4, 6);
+                const day = dateStr.substring(6, 8);
+                const parsedTimestamp = new Date(`${year}-${month}-${day}T12:00:00Z`);
+                if (!isNaN(parsedTimestamp.getTime())) {
+                    timestamp = parsedTimestamp.toISOString();
+                }
             }
             currentTask.remarks.push({ id: `rem_${Date.now()}_${Math.random()}`, text, userId, timestamp });
           }
@@ -300,15 +318,26 @@ export default function Home() {
     if (!activeChecklist) return;
 
     const checklistTitle = `# ${activeChecklist.name}\n\n`;
+    const sectionHeader = `## Incomplete Tasks\n\n`;
 
     const markdownContent = activeChecklist.tasks.map(task => {
-      const status = task.status === 'complete' ? '[x]' : '[ ]';
-      const taskLine = `- ${status} ${task.description} (Priority: ${task.priority}, Assignee: ${task.assignee}, Due: ${task.dueDate})`;
-      const remarksLines = task.remarks.map(r => `  - ${r.text} [${r.userId} @ ${new Date(r.timestamp).toISOString()}]`).join('\n');
+      const status = task.status === 'complete' ? 'x' : ' ';
+      
+      const taskDetails = `(Priority: ${task.priority}, Due: ${task.dueDate})`;
+      const assigneePart = task.assignee !== 'Unassigned' ? ` - *Assignee: [${task.assignee}]*` : '';
+
+      const taskLine = `- [${status}] **${task.description}** ${taskDetails}${assigneePart}`;
+      
+      const remarksLines = task.remarks.map(r => {
+        const remarkDate = new Date(r.timestamp);
+        const dateString = remarkDate.toISOString().split('T')[0].replace(/-/g, '');
+        return `  - > #${dateString} ${r.text} (by ${r.userId})`;
+      }).join('\n');
+      
       return `${taskLine}${remarksLines ? `\n${remarksLines}` : ''}`;
     }).join('\n\n');
 
-    const fullContent = checklistTitle + markdownContent;
+    const fullContent = checklistTitle + sectionHeader + markdownContent;
     const blob = new Blob([fullContent], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
