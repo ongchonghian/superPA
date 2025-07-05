@@ -256,7 +256,7 @@ export default function Home() {
             let userId = 'system';
             let timestamp = new Date().toISOString();
 
-            const userMatch = fullRemarkText.match(/(.*)\(by (.*)\)$/);
+            const userMatch = fullRemarkText.match(/(.*)\s+\(by (.*)\)$/);
             if (userMatch) {
                 text = userMatch[1].trim();
                 userId = userMatch[2].trim();
@@ -325,26 +325,49 @@ export default function Home() {
     if (!activeChecklist) return;
 
     const checklistTitle = `# ${activeChecklist.name}\n\n`;
-    const sectionHeader = `## Incomplete Tasks\n\n`;
 
-    const markdownContent = activeChecklist.tasks.map(task => {
+    const formatTaskToMarkdown = (task: Task) => {
       const status = task.status === 'complete' ? 'x' : ' ';
       
       const taskDetails = `(Priority: ${task.priority}, Due: ${task.dueDate})`;
-      const assigneePart = task.assignee !== 'Unassigned' ? ` - *Assignee: [${task.assignee}]*` : '';
+      const assigneePart = ` - *Assignee: [${task.assignee || 'Unassigned'}]*`;
 
       const taskLine = `- [${status}] **${task.description}** ${taskDetails}${assigneePart}`;
       
       const remarksLines = task.remarks.map(r => {
         const remarkDate = new Date(r.timestamp);
         const dateString = remarkDate.toISOString().split('T')[0].replace(/-/g, '');
+        // The remark text from the database already includes the stateful AI to-do format, e.g., "[ai-todo|pending] ..."
+        // This ensures lossless export.
         return `  - > #${dateString} ${r.text} (by ${r.userId})`;
       }).join('\n');
       
       return `${taskLine}${remarksLines ? `\n${remarksLines}` : ''}`;
-    }).join('\n\n');
+    };
 
-    const fullContent = checklistTitle + sectionHeader + markdownContent;
+    const incompleteTasks = activeChecklist.tasks.filter(t => t.status !== 'complete');
+    const completedTasks = activeChecklist.tasks.filter(t => t.status === 'complete');
+    
+    let markdownContent = '';
+
+    if (incompleteTasks.length > 0) {
+      markdownContent += `## Incomplete Tasks\n\n`;
+      markdownContent += incompleteTasks.map(formatTaskToMarkdown).join('\n\n');
+      markdownContent += '\n\n';
+    }
+
+    if (completedTasks.length > 0) {
+      markdownContent += `## Completed Tasks\n\n`;
+      markdownContent += completedTasks.map(formatTaskToMarkdown).join('\n\n');
+      markdownContent += '\n\n';
+    }
+
+    // Fallback if the checklist is empty
+    if (markdownContent.trim() === '') {
+        markdownContent = 'This checklist has no tasks.';
+    }
+
+    const fullContent = checklistTitle + markdownContent.trim() + '\n';
     const blob = new Blob([fullContent], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
