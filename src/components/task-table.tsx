@@ -391,6 +391,7 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         open={isRemarksSheetOpen}
         onOpenChange={setIsRemarksSheetOpen}
         onUpdateTask={handleUpdateTask}
+        assignees={assignees}
       />
     </div>
   );

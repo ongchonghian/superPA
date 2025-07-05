@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -16,19 +16,28 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import type { Task, Remark } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
 import { Send } from 'lucide-react';
+import {
+    Popover,
+    PopoverContent,
+    PopoverAnchor,
+} from '@/components/ui/popover';
 
 interface TaskRemarksSheetProps {
   task: Task | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdateTask: (task: Task) => void;
+  assignees: string[];
 }
 
 // This is a placeholder for a real user authentication system.
 const USER_ID = "user_123";
 
-export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask }: TaskRemarksSheetProps) {
+export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assignees = [] }: TaskRemarksSheetProps) {
     const [newRemark, setNewRemark] = useState('');
+    const [mentionQuery, setMentionQuery] = useState('');
+    const [isMentionPopoverOpen, setIsMentionPopoverOpen] = useState(false);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     const handleAddRemark = () => {
         if (!task || !newRemark.trim()) return;
@@ -46,6 +55,56 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask }: Tas
         setNewRemark('');
     };
 
+    const handleRemarkChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setNewRemark(value);
+
+        const cursorPos = e.target.selectionStart;
+        if (cursorPos === null) {
+            setIsMentionPopoverOpen(false);
+            return;
+        }
+        
+        const textBeforeCursor = value.substring(0, cursorPos);
+        const lastWord = textBeforeCursor.split(/\s+/).pop() || '';
+
+        if (lastWord.startsWith('@')) {
+            setMentionQuery(lastWord.substring(1));
+            setIsMentionPopoverOpen(true);
+        } else {
+            setIsMentionPopoverOpen(false);
+        }
+    };
+
+    const handleMentionSelect = (user: string) => {
+        const currentValue = newRemark;
+        const cursorPos = inputRef.current?.selectionStart;
+        
+        if (cursorPos === undefined) return;
+
+        const textBeforeCursor = currentValue.substring(0, cursorPos);
+        const lastAt = textBeforeCursor.lastIndexOf('@');
+        
+        if(lastAt === -1) return;
+
+        const prefix = currentValue.substring(0, lastAt);
+        const suffix = currentValue.substring(cursorPos);
+
+        const newText = `${prefix}@${user} ${suffix}`;
+        setNewRemark(newText);
+        setIsMentionPopoverOpen(false);
+
+        setTimeout(() => {
+            if (inputRef.current) {
+                inputRef.current.focus();
+                const newCaretPosition = prefix.length + 1 + user.length + 1; // prefix + @ + user + space
+                inputRef.current.setSelectionRange(newCaretPosition, newCaretPosition);
+            }
+        }, 0);
+    };
+
+    const filteredAssignees = assignees.filter(a => a && a.toLowerCase().includes(mentionQuery.toLowerCase()));
+
     if (!task) return null;
 
     const isComplete = task.status === 'complete';
@@ -55,7 +114,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask }: Tas
             <SheetContent className="sm:max-w-lg w-[90vw] flex flex-col p-4 sm:p-6">
                 <SheetHeader className="text-left">
                     <SheetTitle>Remarks for: {task.description}</SheetTitle>
-                    <SheetDescription>View and add comments to this task.</SheetDescription>
+                    <SheetDescription>View and add comments to this task. Type @ to mention a user.</SheetDescription>
                 </SheetHeader>
                 <ScrollArea className="flex-1 my-4 -mx-4 sm:-mx-6 px-4 sm:px-6">
                     <div className="space-y-4 py-4">
@@ -86,13 +145,32 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask }: Tas
                         onSubmit={(e) => { e.preventDefault(); handleAddRemark(); }}
                         className="flex gap-2 w-full"
                     >
-                        <Input 
-                            value={newRemark}
-                            onChange={e => setNewRemark(e.target.value)}
-                            placeholder={isComplete ? "Task is complete" : "Add a remark..."}
-                            autoComplete="off"
-                            disabled={isComplete}
-                        />
+                        <Popover open={isMentionPopoverOpen && filteredAssignees.length > 0} onOpenChange={setIsMentionPopoverOpen}>
+                             <PopoverAnchor asChild>
+                                <Input 
+                                    ref={inputRef}
+                                    value={newRemark}
+                                    onChange={handleRemarkChange}
+                                    placeholder={isComplete ? "Task is complete" : "Add a remark..."}
+                                    autoComplete="off"
+                                    disabled={isComplete}
+                                />
+                             </PopoverAnchor>
+                             <PopoverContent className="w-[250px] p-1" align="start">
+                                <div className="flex flex-col gap-1">
+                                    {filteredAssignees.map(user => (
+                                        <Button
+                                            key={user}
+                                            variant="ghost"
+                                            className="w-full justify-start h-8 px-2"
+                                            onClick={() => handleMentionSelect(user)}
+                                        >
+                                            {user}
+                                        </Button>
+                                    ))}
+                                </div>
+                            </PopoverContent>
+                        </Popover>
                         <Button type="submit" disabled={!newRemark.trim() || isComplete}>
                             <Send className="h-4 w-4" />
                             <span className="sr-only">Send</span>
