@@ -3,9 +3,9 @@
 'use server';
 
 /**
- * @fileOverview AI-powered suggestion of next steps for a given task.
+ * @fileOverview AI-powered suggestion of AI To-Do items for a given task.
  *
- * - suggestNextSteps - A function that suggests logical and actionable next steps for a given task.
+ * - suggestNextSteps - A function that suggests automatable sub-tasks for a given task.
  * - SuggestNextStepsInput - The input type for the suggestNextSteps function.
  * - SuggestNextStepsOutput - The return type for the suggestNextSteps function.
  */
@@ -24,7 +24,7 @@ export type SuggestNextStepsInput = z.infer<typeof SuggestNextStepsInputSchema>;
 const SuggestNextStepsOutputSchema = z.object({
   nextSteps: z
     .array(z.string())
-    .describe('A list of suggested next steps for the task.'),
+    .describe('A list of suggested AI To-Do items for the task.'),
 });
 export type SuggestNextStepsOutput = z.infer<typeof SuggestNextStepsOutputSchema>;
 
@@ -36,12 +36,18 @@ const prompt = ai.definePrompt({
   name: 'suggestNextStepsPrompt',
   input: {schema: SuggestNextStepsInputSchema},
   output: {schema: SuggestNextStepsOutputSchema},
-  prompt: `You are an AI assistant designed to suggest the next steps for a given task based on its description and discussion history.
+  prompt: `You are an AI assistant that analyzes a task and its discussion history to identify sub-tasks that can be automated.
+Your goal is to propose these automatable sub-tasks as "AI To-Dos".
 
-  Task Description: {{{taskDescription}}}
-  Discussion History: {{{discussionHistory}}}
+Analyze the following information:
+Task Description: {{{taskDescription}}}
+Discussion History: {{{discussionHistory}}}
 
-  Please provide a list of actionable next steps that can be taken to progress the task. Return the next steps as a JSON array of strings.
+Based on your analysis, generate a list of suggestions for AI To-Dos. Each suggestion must be a clear, single-action instruction for an AI to perform.
+Format each suggestion as a string following this exact syntax: "[ai-todo|pending] {description of the AI task}"
+
+If you cannot identify any automatable tasks, return an empty array for the 'nextSteps' field.
+Return the suggestions as a JSON object.
   `,
 });
 

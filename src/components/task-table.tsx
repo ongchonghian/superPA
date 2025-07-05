@@ -121,7 +121,7 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         setRemarksTask(updatedTask);
       }
     }
-  }, [checklist.tasks, remarksTask?.id, isRemarksSheetOpen]);
+  }, [checklist, remarksTask, isRemarksSheetOpen]);
 
   const assignees = useMemo(() => [...new Set(checklist.tasks.map(t => t.assignee))], [checklist.tasks]);
 
@@ -294,104 +294,106 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
           <TableBody>
             {filteredAndSortedTasks.length > 0 ? (
               filteredAndSortedTasks.map(task => {
-                const sortedRemarks = task.remarks.slice().sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                const sortedRemarks = [...task.remarks].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                 const aiTodos = sortedRemarks.filter(r => r.text.startsWith('[ai-todo|'));
                 const regularRemarks = sortedRemarks.filter(r => !r.text.startsWith('[ai-todo|'));
-
+                
                 return (
-                <TableRow key={task.id} data-state={task.status === 'complete' ? 'completed' : 'pending'}>
-                  <TableCell className="p-2 align-top">
-                     <Checkbox
-                        id={`complete-${task.id}`}
-                        aria-label={`Mark task ${task.description} as complete`}
-                        checked={task.status === 'complete'}
-                        onCheckedChange={(isChecked) => handleTaskCompletionChange(task, !!isChecked)}
-                      />
-                  </TableCell>
-                  <TableCell className={`font-medium align-top ${task.status === 'complete' ? 'text-muted-foreground' : ''}`}>
-                    <div className={task.status === 'complete' ? 'line-through' : ''}>{task.description}</div>
-                    
-                    <div className="mt-4 space-y-3">
-                      {aiTodos.map(remark => (
-                        <div key={remark.id} className="flex items-start gap-2.5">
-                          <Avatar className="h-6 w-6 border text-xs">
-                              <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          <div className="grid gap-0.5 flex-1">
-                              <div className="flex items-center gap-2">
-                                  <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                      {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
-                                  </p>
-                              </div>
-                              <RemarkDisplay text={remark.text} />
+                  <TableRow key={task.id} data-state={task.status === 'complete' ? 'completed' : 'pending'}>
+                    <TableCell className="p-2 align-top">
+                      <Checkbox
+                          id={`complete-${task.id}`}
+                          aria-label={`Mark task ${task.description} as complete`}
+                          checked={task.status === 'complete'}
+                          onCheckedChange={(isChecked) => handleTaskCompletionChange(task, !!isChecked)}
+                        />
+                    </TableCell>
+                    <TableCell className={`font-medium align-top ${task.status === 'complete' ? 'text-muted-foreground' : ''}`}>
+                      <div className={task.status === 'complete' ? 'line-through' : ''}>{task.description}</div>
+                      
+                      <div className="mt-4 space-y-3">
+                        {aiTodos.length > 0 && (
+                          aiTodos.map(remark => (
+                          <div key={remark.id} className="flex items-start gap-2.5">
+                            <Avatar className="h-6 w-6 border text-xs">
+                                <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div className="grid gap-0.5 flex-1">
+                                <div className="flex items-center gap-2">
+                                    <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
+                                    </p>
+                                </div>
+                                <RemarkDisplay text={remark.text} />
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        )))}
 
-                      {aiTodos.length > 0 && regularRemarks.length > 0 && (
-                        <div className="py-2"><hr className="border-dashed" /></div>
-                      )}
+                        {aiTodos.length > 0 && regularRemarks.length > 0 && (
+                          <div className="py-2"><hr className="border-dashed" /></div>
+                        )}
 
-                      {regularRemarks.map(remark => (
-                        <div key={remark.id} className="flex items-start gap-2.5">
-                          <Avatar className="h-6 w-6 border text-xs">
-                              <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
-                          </Avatar>
-                          <div className="grid gap-0.5 flex-1">
-                              <div className="flex items-center gap-2">
-                                  <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                      {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
-                                  </p>
-                              </div>
-                              <RemarkDisplay text={remark.text} />
+                        {regularRemarks.length > 0 && (
+                          regularRemarks.map(remark => (
+                          <div key={remark.id} className="flex items-start gap-2.5">
+                            <Avatar className="h-6 w-6 border text-xs">
+                                <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div className="grid gap-0.5 flex-1">
+                                <div className="flex items-center gap-2">
+                                    <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
+                                    </p>
+                                </div>
+                                <RemarkDisplay text={remark.text} />
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        )))}
+                      </div>
 
-                  </TableCell>
-                  <TableCell className="align-top">{task.assignee}</TableCell>
-                  <TableCell className="align-top">
-                    <Badge variant="outline" className={priorityColors[task.priority]}>{task.priority}</Badge>
-                  </TableCell>
-                  <TableCell className="align-top">{format(parseISO(task.dueDate), 'MMM dd, yyyy')}</TableCell>
-                  <TableCell className="align-top">
-                    <Badge variant="outline" className={statusColors[task.status]}>
-                      {task.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-right align-top no-print">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                          <span className="sr-only">Open menu</span>
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onSelect={() => {setDialogTask(task); setIsTaskDialogOpen(true);}} disabled={task.status === 'complete'}>
-                            Edit Task
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => {setRemarksTask(task); setIsRemarksSheetOpen(true);}}>
-                            <MessageSquare className="mr-2 h-4 w-4" />
-                            {task.status === 'complete' ? 'View Remarks' : 'Add Remark'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => {setAiSuggestionTask(task); setIsAiDialogOpen(true);}} disabled={task.status === 'complete'}>
-                          <WandSparkles className="mr-2 h-4 w-4" />
-                          Suggest Next Steps
-                        </DropdownMenuItem>
-                        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => handleDeleteTask(task.id)}>
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete Task
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              );
-            })
+                    </TableCell>
+                    <TableCell className="align-top">{task.assignee}</TableCell>
+                    <TableCell className="align-top">
+                      <Badge variant="outline" className={priorityColors[task.priority]}>{task.priority}</Badge>
+                    </TableCell>
+                    <TableCell className="align-top">{format(parseISO(task.dueDate), 'MMM dd, yyyy')}</TableCell>
+                    <TableCell className="align-top">
+                      <Badge variant="outline" className={statusColors[task.status]}>
+                        {task.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right align-top no-print">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" className="h-8 w-8 p-0">
+                            <span className="sr-only">Open menu</span>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => {setDialogTask(task); setIsTaskDialogOpen(true);}} disabled={task.status === 'complete'}>
+                              Edit Task
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => {setRemarksTask(task); setIsRemarksSheetOpen(true);}}>
+                              <MessageSquare className="mr-2 h-4 w-4" />
+                              {task.status === 'complete' ? 'View Remarks' : 'Add Remark'}
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => {setAiSuggestionTask(task); setIsAiDialogOpen(true);}} disabled={task.status === 'complete'}>
+                            <WandSparkles className="mr-2 h-4 w-4" />
+                            Suggest AI To-Do
+                          </DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => handleDeleteTask(task.id)}>
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete Task
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
                 <TableCell colSpan={7} className="h-24 text-center">
@@ -418,6 +420,7 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         task={aiSuggestionTask}
         open={isAiDialogOpen}
         onOpenChange={setIsAiDialogOpen}
+        onUpdateTask={handleUpdateTask}
       />
       <TaskRemarksSheet
         task={remarksTask}
