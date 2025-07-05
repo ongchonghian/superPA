@@ -3,9 +3,10 @@
 import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { File, Loader2, Trash2, UploadCloud } from 'lucide-react';
+import { File, Loader2, Terminal, Trash2, UploadCloud } from 'lucide-react';
 import type { Document } from '@/lib/types';
 import { Input } from './ui/input';
+import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 
 interface DocumentManagerProps {
   documents: Document[];
@@ -51,6 +52,22 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
         </CardDescription>
       </CardHeader>
       <CardContent>
+        <Alert className="mb-4 text-sm">
+            <Terminal className="h-4 w-4" />
+            <AlertTitle className="font-semibold">First-Time Setup for File Uploads</AlertTitle>
+            <AlertDescription>
+                <p className="mt-1">For file uploads to work, you may need to update your Firebase Storage security rules.</p>
+                <p className="mt-2">Go to your Firebase Console, navigate to <strong>Storage &rarr; Rules</strong>, and replace the default rules with the following to allow access for authenticated users:</p>
+                <pre className="mt-2 w-full overflow-x-auto text-xs bg-muted p-2 rounded-md font-mono"><code>{`rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}`}</code></pre>
+            </AlertDescription>
+        </Alert>
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 space-y-2">
             <label htmlFor="file-upload" className="sr-only">Choose files</label>
