@@ -6,7 +6,7 @@ import { TaskTable } from '@/components/task-table';
 import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
-import { isFirebaseConfigured, db, auth } from '@/lib/firebase';
+import { isFirebaseConfigured, db } from '@/lib/firebase';
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import {
   collection,
@@ -22,7 +22,6 @@ import {
   arrayRemove,
   writeBatch,
 } from 'firebase/firestore';
-import { onAuthStateChanged, signInAnonymously, type User } from 'firebase/auth';
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
@@ -45,7 +44,6 @@ const fileToDataUri = (file: File): Promise<string> => {
 
 export default function Home() {
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
@@ -69,37 +67,16 @@ export default function Home() {
     return <FirebaseNotConfigured />;
   }
 
-  // Effect to handle anonymous user authentication
-  useEffect(() => {
-    if (!auth) return;
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-      } else {
-        signInAnonymously(auth).catch((error) => {
-          console.error("Error signing in anonymously:", error);
-          toast({
-            title: "Authentication Error",
-            description: "Could not establish a user session.",
-            variant: "destructive",
-          });
-        });
-      }
-    });
-    return () => unsubscribe();
-  }, [toast]);
-
-
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
-    if (!user || !db) {
+    if (!db) {
       setChecklistMetas([]);
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
-    const q = query(collection(db, 'checklists'), where('ownerId', '==', user.uid));
+    const q = query(collection(db, 'checklists'), where('ownerId', '==', 'local_user'));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
@@ -125,13 +102,14 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [toast, user]);
+  }, [toast]);
 
   // Effect to subscribe to the currently active checklist for real-time updates
   useEffect(() => {
     if (!activeChecklistId || !db) {
       setActiveChecklist(null);
       setDocuments([]);
+      setIsLoading(false); // Stop loading if there's no checklist to load
       return;
     }
 
@@ -186,16 +164,12 @@ export default function Home() {
   }, [toast]);
 
   const handleSaveNewChecklist = useCallback(async (name: string, tasks: Task[] = []) => {
-    if (!user) {
-      toast({ title: "Error", description: "You must be signed in to create a checklist.", variant: "destructive" });
-      return;
-    }
     if (name) {
       try {
         const newChecklist: Omit<Checklist, 'id'> = {
           name: name,
           tasks: tasks,
-          ownerId: user.uid,
+          ownerId: 'local_user',
           documentIds: [],
         };
         const docRef = await addDoc(collection(db!, 'checklists'), newChecklist);
@@ -206,7 +180,7 @@ export default function Home() {
         toast({ title: "Error", description: "Failed to create checklist.", variant: "destructive" });
       }
     }
-  }, [toast, user]);
+  }, [toast]);
   
   const handleSwitchChecklist = useCallback((id: string) => {
     setActiveChecklistId(id);
@@ -230,19 +204,14 @@ export default function Home() {
   };
   
   const handleOverwriteChecklist = useCallback(async (checklistId: string, name: string, tasks: Task[]) => {
-    if (!user) {
-        toast({ title: "Error", description: "You must be signed in to overwrite a checklist.", variant: "destructive" });
-        return;
-    }
     const checklistToUpdate = {
         id: checklistId,
         name: name,
-        ownerId: user.uid,
         tasks: tasks,
     };
     await handleUpdateChecklist(checklistToUpdate);
     toast({ title: "Import Successful", description: `Checklist "${name}" has been overwritten.` });
-  }, [handleUpdateChecklist, toast, user]);
+  }, [handleUpdateChecklist, toast]);
 
   const handleAppendToChecklist = useCallback(async (checklistId: string, tasks: Task[]) => {
     const checklistRef = doc(db!, 'checklists', checklistId);
@@ -591,6 +560,10 @@ export default function Home() {
         toast({ title: "Error", description: "No active checklist selected.", variant: "destructive" });
         return;
     }
+    if (!isFirebaseConfigured) {
+      toast({ title: "Error", description: "Firebase is not configured for storage operations.", variant: "destructive" });
+      return;
+    }
 
     setIsUploading(true);
     const uploadToast = toast({ title: "Uploading...", description: `Starting upload of ${files.length} document(s).` });
@@ -709,7 +682,7 @@ export default function Home() {
   },[activeChecklist, handleUpdateChecklist]);
 
 
-  if (isLoading || !user) {
+  if (isLoading) {
     return <Loading />;
   }
 
@@ -812,7 +785,7 @@ export default function Home() {
         onOpenChange={setIsRemarksSheetOpen}
         onUpdateTask={handleUpdateTask}
         assignees={assignees}
-        userId={user?.uid}
+        userId={'local_user'}
       />
     </div>
   );
