@@ -4,18 +4,20 @@
 import React, { useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { File, Loader2, Trash2, UploadCloud } from 'lucide-react';
+import { File, Loader2, Terminal, Trash2, UploadCloud } from 'lucide-react';
 import type { Document } from '@/lib/types';
 import { Input } from './ui/input';
+import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 
 interface DocumentManagerProps {
   documents: Document[];
   onUpload: (files: FileList) => Promise<void>;
   onDelete: (documentId: string) => Promise<void>;
   isUploading: boolean;
+  storageCorsError: boolean;
 }
 
-export function DocumentManager({ documents, onUpload, onDelete, isUploading }: DocumentManagerProps) {
+export function DocumentManager({ documents, onUpload, onDelete, isUploading, storageCorsError }: DocumentManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleUploadClick = async () => {
@@ -42,6 +44,45 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
         </CardDescription>
       </CardHeader>
       <CardContent>
+        {storageCorsError && (
+          <Alert variant="destructive" className="mb-6">
+            <Terminal className="h-4 w-4" />
+            <AlertTitle>CORS Policy Error Detected</AlertTitle>
+            <AlertDescription>
+              <div className="space-y-3 mt-2 text-destructive-foreground/90">
+                <p>Your browser is blocking the upload because your Firebase Storage bucket is not configured to accept requests from this web-based development environment. You must update its CORS configuration.</p>
+                <p className="font-bold">Follow these steps using the Google Cloud Shell:</p>
+                <ol className="list-decimal list-inside space-y-3">
+                  <li>
+                    <strong>Open Cloud Shell</strong> from your Google Cloud Console.
+                  </li>
+                  <li>
+                    <strong>Create a file named `cors.json`</strong> with the following content. This configuration allows any origin, which is acceptable for this development environment.
+                    <pre className="mt-2 p-2 bg-black/20 rounded-md text-xs font-mono select-all">
+                      {`[
+  {
+    "origin": ["*"],
+    "method": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    "responseHeader": ["Content-Type", "Authorization"],
+    "maxAgeSeconds": 3600
+  }
+]`}
+                    </pre>
+                  </li>
+                  <li>
+                    <strong>Apply the configuration</strong> by running this command. Replace <code className="bg-black/20 px-1 py-0.5 rounded">YOUR_PROJECT_ID</code> with your actual Firebase Project ID.
+                    <pre className="mt-2 p-2 bg-black/20 rounded-md text-xs font-mono select-all">
+                      gcloud storage buckets update gs://YOUR_PROJECT_ID.appspot.com --cors-file=cors.json
+                    </pre>
+                  </li>
+                  <li>
+                    <strong>Try uploading again.</strong> The change can take a minute to apply. If it still fails, double-check that your Project ID is correct.
+                  </li>
+                </ol>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 space-y-2">
             <label htmlFor="file-upload" className="sr-only">Choose files</label>

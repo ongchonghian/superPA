@@ -57,6 +57,7 @@ export default function Home() {
   const [aiAnalysisResult, setAiAnalysisResult] = useState<SuggestChecklistNextStepsOutput | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [storageCorsError, setStorageCorsError] = useState(false);
   const [remarksTask, setRemarksTask] = useState<Task | null>(null);
   const [isRemarksSheetOpen, setIsRemarksSheetOpen] = useState(false);
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
@@ -616,6 +617,7 @@ export default function Home() {
       return;
     }
     
+    setStorageCorsError(false);
     setIsUploading(true);
     const uploadToast = toast({ title: "Uploading...", description: `Starting upload of ${files.length} document(s).` });
 
@@ -653,9 +655,15 @@ export default function Home() {
         uploadToast.update({ id: uploadToast.id, title: "Upload complete", description: `${files.length} document(s) are ready for AI context.` });
     } catch (error: any) {
         console.error("Error uploading documents:", error);
+        
         let errorMessage = "Could not upload documents. Please try again.";
-        if (error.code === 'storage/unauthorized') {
-            errorMessage = "Permission denied. Please check your Firebase Storage security rules."
+        const errorString = (error.message || '').toLowerCase();
+
+        if (error.code === 'storage/unauthorized' || errorString.includes('cors') || errorString.includes('access control')) {
+            errorMessage = "Permission denied due to a CORS policy on your bucket. See guide below.";
+            setStorageCorsError(true);
+        } else if (error.code === 'storage/object-not-found') {
+             errorMessage = "Storage bucket not found. Please verify NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET in your .env.local file.";
         }
         uploadToast.update({ id: uploadToast.id, title: "Upload Failed", description: errorMessage, variant: "destructive" });
     } finally {
@@ -813,6 +821,7 @@ export default function Home() {
               onUpload={handleUploadDocuments}
               onDelete={handleDeleteDocument}
               isUploading={isUploading}
+              storageCorsError={storageCorsError}
             />
             <TaskTable
               checklist={activeChecklist}
