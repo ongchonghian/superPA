@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
 import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth } from '@/lib/firebase';
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
+import { FirestoreNotConnected } from '@/components/firestore-not-connected';
 import { ref as storageRef, uploadBytes, deleteObject } from 'firebase/storage';
 import {
   collection,
@@ -41,6 +42,7 @@ export default function Home() {
   const [authError, setAuthError] = useState(false);
   const [authMethodDisabled, setAuthMethodDisabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [firestoreError, setFirestoreError] = useState(false);
   const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
   const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
@@ -108,6 +110,7 @@ export default function Home() {
     }
 
     setIsLoading(true);
+    setFirestoreError(false); // Reset on each attempt
     const q = query(collection(db, 'checklists'), where('ownerId', '==', userId));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
@@ -129,7 +132,12 @@ export default function Home() {
       setIsLoading(false);
     }, (error) => {
       console.error("Error fetching checklists: ", error);
-      toast({ title: "Error", description: "Could not load checklists.", variant: "destructive" });
+      // This is the specific error code for backend timeout/unavailability
+      if (error.code === 'unavailable') {
+        setFirestoreError(true);
+      } else {
+        toast({ title: "Error", description: "Could not load checklists.", variant: "destructive" });
+      }
       setIsLoading(false);
     });
 
@@ -756,6 +764,10 @@ export default function Home() {
 
   if (authError || authMethodDisabled) {
     return <FirebaseNotConfigured missingKeys={missingFirebaseConfigKeys} authMethodDisabled={authMethodDisabled} />;
+  }
+
+  if (firestoreError) {
+    return <FirestoreNotConnected />;
   }
 
   if (!authInitialized || (isLoading && !activeChecklistId)) {
