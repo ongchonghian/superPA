@@ -77,10 +77,7 @@ export default function Home() {
           setUserId(user.uid);
           setAuthInitialized(true);
         } else {
-          signInAnonymously(auth).then(userCredential => {
-            setUserId(userCredential.user.uid);
-            setAuthInitialized(true);
-          }).catch((error: any) => {
+          signInAnonymously(auth).catch((error: any) => {
             console.error("Anonymous sign-in failed: ", error);
             if (error.code === 'auth/configuration-not-found') {
               setAuthError(true);
@@ -592,9 +589,18 @@ export default function Home() {
   }, [activeChecklist]);
 
   const handleUploadDocuments = useCallback(async (files: FileList) => {
-    if (!activeChecklist || !db || !storage) {
+    if (!activeChecklist || !db || !storage || !auth) {
         toast({ title: "Error", description: "No active checklist selected or storage not configured.", variant: "destructive" });
         return;
+    }
+
+    if (!auth.currentUser) {
+      toast({
+        title: "Authentication Error",
+        description: "Your session could not be verified. Please refresh the page and try again.",
+        variant: "destructive"
+      });
+      return;
     }
     
     setIsUploading(true);
