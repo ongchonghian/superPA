@@ -39,6 +39,7 @@ export default function Home() {
   const [userId, setUserId] = useState<string | null>(null);
   const [authInitialized, setAuthInitialized] = useState(false);
   const [authError, setAuthError] = useState(false);
+  const [authMethodDisabled, setAuthMethodDisabled] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
@@ -83,6 +84,8 @@ export default function Home() {
             console.error("Anonymous sign-in failed: ", error);
             if (error.code === 'auth/configuration-not-found') {
               setAuthError(true);
+            } else if (error.code === 'auth/admin-restricted-operation' || error.code === 'auth/operation-not-allowed') {
+              setAuthMethodDisabled(true);
             }
             setAuthInitialized(true);
           });
@@ -93,6 +96,8 @@ export default function Home() {
       console.error("Failed to initialize auth listener:", error);
       if (error.code === 'auth/configuration-not-found') {
         setAuthError(true);
+      } else if (error.code === 'auth/admin-restricted-operation' || error.code === 'auth/operation-not-allowed') {
+        setAuthMethodDisabled(true);
       }
       setAuthInitialized(true);
     }
@@ -743,8 +748,8 @@ export default function Home() {
   },[activeChecklist, handleUpdateChecklist]);
 
 
-  if (authError) {
-    return <FirebaseNotConfigured />;
+  if (authError || authMethodDisabled) {
+    return <FirebaseNotConfigured missingKeys={missingFirebaseConfigKeys} authMethodDisabled={authMethodDisabled} />;
   }
 
   if (!authInitialized || (isLoading && !activeChecklistId)) {

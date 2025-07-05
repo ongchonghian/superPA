@@ -2,8 +2,56 @@
 
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
-export function FirebaseNotConfigured({ missingKeys }: { missingKeys?: string[] }) {
+export function FirebaseNotConfigured({ missingKeys, authMethodDisabled }: { missingKeys?: string[], authMethodDisabled?: boolean }) {
   const hasMissingKeys = missingKeys && missingKeys.length > 0;
+
+  if (authMethodDisabled) {
+    return (
+        <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
+            <div className="w-full max-w-3xl rounded-lg border-2 border-dashed border-destructive p-6 sm:p-8 text-center">
+                <div className="flex justify-center">
+                    <AlertCircle className="h-12 w-12 text-destructive" />
+                </div>
+                <h1 className="mt-4 text-2xl font-bold font-headline text-destructive">Anonymous Sign-In Is Disabled</h1>
+
+                <p className="mt-4 text-muted-foreground">
+                    Your app is correctly configured, but the authentication method it uses (Anonymous Sign-In) has not been enabled in your Firebase project.
+                </p>
+
+                <div className="mt-6 text-left text-foreground/90 space-y-4">
+                    <p>
+                        <strong>1. Go to your Firebase Project:</strong><br/>
+                        Open the <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">Firebase Console</a> and select your project.
+                    </p>
+                    <p>
+                        <strong>2. Navigate to Authentication:</strong><br/>
+                        In the left-hand menu, click on "Authentication" under the "Build" section.
+                    </p>
+                    <p>
+                        <strong>3. Go to the "Sign-in method" tab.</strong><br/>
+                        Select the "Sign-in method" tab from the top bar.
+                    </p>
+                    <p>
+                        <strong>4. Enable Anonymous Sign-in:</strong><br/>
+                        Find "Anonymous" in the list of providers, click on it, and toggle the switch to "Enable". Then click "Save".
+                    </p>
+                </div>
+                
+                <div className="mt-8 bg-red-50 dark:bg-destructive/10 border-l-4 border-destructive p-4 text-left rounded-r-md">
+                    <div className='flex items-start gap-4'>
+                        <RefreshCw className="h-6 w-6 text-destructive flex-shrink-0 mt-1" />
+                        <div>
+                            <h3 className="font-bold text-destructive">Crucial Step for Firebase Studio</h3>
+                            <p className="mt-2 text-sm text-foreground/80 dark:text-foreground/80">
+                                After you enable this setting in the Firebase Console, you <strong>must</strong> restart the backend in Firebase Studio for the change to apply. Look for a "Restart Backend" button or similar control in the Studio interface.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen w-full items-center justify-center bg-background p-4">
