@@ -61,6 +61,27 @@ const priorityColors: { [key in TaskPriority]: string } = {
     Low: 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600',
 };
 
+const RemarkDisplay = ({ text }: { text: string }) => {
+  const aiTodoMatch = text.match(/^TODO \(Assigned to AI\): (.*)/s);
+
+  if (aiTodoMatch) {
+    const todoText = aiTodoMatch[1].trim();
+    return (
+      <div className="p-2 rounded-lg border border-accent/30 bg-accent/10">
+        <div className="flex items-start gap-2.5">
+          <WandSparkles className="h-4 w-4 mt-0.5 text-accent flex-shrink-0" />
+          <div>
+            <h4 className="text-xs font-semibold tracking-wider uppercase text-accent">AI To-Do</h4>
+            <p className="text-sm text-foreground/90 whitespace-pre-wrap">{todoText}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return <p className="text-sm text-foreground/90 whitespace-pre-wrap">{text}</p>;
+};
+
 export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -206,14 +227,14 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                             <Avatar className="h-6 w-6 border text-xs">
                                 <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
                             </Avatar>
-                            <div className="grid gap-0.5">
+                            <div className="grid gap-0.5 flex-1">
                                 <div className="flex items-center gap-2">
                                     <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
                                     <p className="text-xs text-muted-foreground">
                                         {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
                                     </p>
                                 </div>
-                                <p className="text-sm text-foreground/90 whitespace-pre-wrap">{remark.text}</p>
+                                <RemarkDisplay text={remark.text} />
                             </div>
                           </div>
                         ))}
@@ -294,4 +315,5 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
       />
     </div>
   );
-}
+
+    
