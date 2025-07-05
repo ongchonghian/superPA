@@ -16,8 +16,8 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  serverTimestamp,
 } from 'firebase/firestore';
+import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 
 // This is a placeholder for a real user authentication system.
 // In a real app, you would get this from your auth provider.
@@ -30,6 +30,7 @@ export default function Home() {
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
   const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isNewChecklistDialogOpen, setIsNewChecklistDialogOpen] = useState(false);
 
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
@@ -88,18 +89,17 @@ export default function Home() {
     }
   }, [toast]);
 
-  const handleAddChecklist = useCallback(async () => {
-    const newName = prompt("Enter new checklist name:");
-    if (newName) {
+  const handleSaveNewChecklist = useCallback(async (name: string) => {
+    if (name) {
       try {
         const newChecklist: Omit<Checklist, 'id'> = {
-          name: newName,
+          name: name,
           tasks: [],
           ownerId: USER_ID,
         };
         const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
         setActiveChecklistId(docRef.id);
-        toast({ title: "Success", description: `Checklist "${newName}" created.` });
+        toast({ title: "Success", description: `Checklist "${name}" created.` });
       } catch (error) {
         console.error("Error adding checklist: ", error);
         toast({ title: "Error", description: "Failed to create checklist.", variant: "destructive" });
@@ -215,7 +215,7 @@ export default function Home() {
         checklists={checklistMetas}
         activeChecklistId={activeChecklistId}
         onSwitch={handleSwitchChecklist}
-        onAdd={handleAddChecklist}
+        onAdd={() => setIsNewChecklistDialogOpen(true)}
         onDelete={handleDeleteChecklist}
         onImport={() => fileInputRef.current?.click()}
         onExportMarkdown={handleExportMarkdown}
@@ -234,7 +234,7 @@ export default function Home() {
             <h2 className="text-xl font-semibold text-foreground">No Checklist Selected</h2>
             <p className="mt-2 text-muted-foreground">Create a new checklist or import one to get started.</p>
             <button
-              onClick={handleAddChecklist}
+              onClick={() => setIsNewChecklistDialogOpen(true)}
               className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             >
               Create Checklist
@@ -245,6 +245,11 @@ export default function Home() {
       <div className="print-only hidden">
         {activeChecklist && <TaskTable checklist={activeChecklist} onUpdate={() => {}} />}
       </div>
+      <NewChecklistDialog
+        open={isNewChecklistDialogOpen}
+        onOpenChange={setIsNewChecklistDialogOpen}
+        onSave={handleSaveNewChecklist}
+      />
     </div>
   );
 }
