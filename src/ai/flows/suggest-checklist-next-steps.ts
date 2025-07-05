@@ -50,7 +50,7 @@ const prompt = ai.definePrompt({
 Your goal is to propose these automatable sub-tasks as "AI To-Dos".
 
 For each task provided in the input array, analyze its description and discussion history.
-Based on your analysis, generate a list of *new* suggestions for AI To-Dos for that specific task.
+Based on your analysis, generate one or more *new* suggestions for AI To-Dos for that specific task. If multiple distinct automatable actions can be derived from a task's context, you MUST generate a separate suggestion for each one.
 Important: Do not suggest any AI To-Dos that are functionally identical to ones already present in that task's discussion history.
 
 For each valid suggestion you generate, provide the following in the output object:
@@ -59,7 +59,7 @@ For each valid suggestion you generate, provide the following in the output obje
 3. context: A short explanation for *why* you are making this suggestion. If it relates to a specific remark, quote part of that remark in your explanation.
 
 If you cannot identify any new automatable tasks for any of the provided inputs, return an empty array for the 'suggestions' field.
-Return all suggestions from all analyzed tasks as a single flat array in the JSON object, conforming to the output schema.
+Return all suggestions from all analyzed tasks as a single flat array in the JSON object, conforming to the output schema. It is crucial that if you identify multiple suggestions across all tasks, you return all of them in the 'suggestions' array.
 
 Here is the list of tasks to analyze:
 {{#each tasks}}
