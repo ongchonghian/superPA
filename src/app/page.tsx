@@ -32,6 +32,7 @@ export default function Home() {
   const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isNewChecklistDialogOpen, setIsNewChecklistDialogOpen] = useState(false);
+  const [importMode, setImportMode] = useState<'new' | 'current' | null>(null);
 
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
@@ -124,10 +125,20 @@ export default function Home() {
       }
     }
   }, [toast]);
+  
+  const handleInitiateImport = (mode: 'new' | 'current') => {
+    setImportMode(mode);
+    fileInputRef.current?.click();
+  };
 
-  const handleImportMarkdown = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelectedForImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!importMode) return;
+
     const file = event.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      setImportMode(null);
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -139,14 +150,6 @@ export default function Home() {
         }
         
         const lines = content.split('\n');
-
-        const checklistNameMatch = lines[0]?.match(/^#\s+(.*)/);
-        if (!checklistNameMatch) {
-          toast({ title: "Import failed", description: "Invalid format: Checklist must start with a '# Checklist Name' title.", variant: "destructive" });
-          return;
-        }
-        const newChecklistName = checklistNameMatch[1].trim();
-
         const newTasks: Task[] = [];
         let currentTask: Task | null = null;
 
@@ -156,9 +159,7 @@ export default function Home() {
             if (currentTask) {
               newTasks.push(currentTask);
             }
-
             const [, statusChar, restOfLine] = taskMatch;
-
             let description = restOfLine.trim();
             let priority: TaskPriority = 'Medium';
             let assignee = 'Unassigned';
@@ -168,28 +169,19 @@ export default function Home() {
             if (detailsMatch) {
               description = detailsMatch[1].trim();
               const parsedPriority = detailsMatch[2].trim() as TaskPriority;
-              if (PRIORITIES.includes(parsedPriority)) {
-                priority = parsedPriority;
-              }
+              if (PRIORITIES.includes(parsedPriority)) { priority = parsedPriority; }
               assignee = detailsMatch[3].trim();
               try {
                 const parsedDate = new Date(detailsMatch[4].trim());
-                if(!isNaN(parsedDate.getTime())) {
-                    dueDate = parsedDate.toISOString().split('T')[0];
-                }
-              } catch (error) {
-                // keep default if date is invalid
-              }
+                if(!isNaN(parsedDate.getTime())) { dueDate = parsedDate.toISOString().split('T')[0]; }
+              } catch (error) { /* keep default if date is invalid */ }
             }
 
             currentTask = {
               id: `task_${Date.now()}_${Math.random()}`,
               description,
               status: (statusChar === 'x' ? 'complete' : 'pending') as TaskStatus,
-              priority,
-              assignee,
-              dueDate,
-              remarks: [],
+              priority, assignee, dueDate, remarks: [],
             };
             continue;
           }
@@ -199,50 +191,54 @@ export default function Home() {
             let text = remarkMatch[1].trim();
             let userId = 'system';
             let timestamp = new Date().toISOString();
-
             const remarkDetailsMatch = text.match(/(.*) \[(.*) @ (.*)\]/);
             if (remarkDetailsMatch) {
               text = remarkDetailsMatch[1].trim();
               userId = remarkDetailsMatch[2].trim();
               try {
                 const parsedTimestamp = new Date(remarkDetailsMatch[3].trim());
-                if(!isNaN(parsedTimestamp.getTime())) {
-                    timestamp = parsedTimestamp.toISOString();
-                }
-              } catch (error) {
-                // keep default timestamp if invalid
-              }
+                if(!isNaN(parsedTimestamp.getTime())) { timestamp = parsedTimestamp.toISOString(); }
+              } catch (error) { /* keep default timestamp if invalid */ }
             }
-
-            currentTask.remarks.push({
-              id: `rem_${Date.now()}_${Math.random()}`,
-              text,
-              userId,
-              timestamp,
-            });
+            currentTask.remarks.push({ id: `rem_${Date.now()}_${Math.random()}`, text, userId, timestamp });
           }
         }
+        if (currentTask) { newTasks.push(currentTask); }
 
-        if (currentTask) {
-          newTasks.push(currentTask);
-        }
+        if (importMode === 'new') {
+            const checklistNameMatch = lines[0]?.match(/^#\s+(.*)/);
+            if (!checklistNameMatch) {
+              toast({ title: "Import failed", description: "Invalid format: Checklist must start with a '# Checklist Name' title.", variant: "destructive" });
+              return;
+            }
+            const newChecklistName = checklistNameMatch[1].trim();
+            const newChecklist: Omit<Checklist, 'id'> = {
+              name: newChecklistName,
+              tasks: newTasks,
+              ownerId: USER_ID,
+            };
+            const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
+            setActiveChecklistId(docRef.id);
+            toast({ title: "Import successful", description: `Checklist "${newChecklistName}" with ${newTasks.length} tasks imported.` });
 
-        if (newTasks.length > 0) {
-          const newChecklist: Omit<Checklist, 'id'> = {
-            name: newChecklistName,
-            tasks: newTasks,
-            ownerId: USER_ID,
-          };
-          const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
-          setActiveChecklistId(docRef.id);
-          toast({ title: "Import successful", description: `Checklist "${newChecklistName}" with ${newTasks.length} tasks imported.` });
-        } else {
-          toast({ title: "Import failed", description: "No valid tasks found in the file.", variant: "destructive" });
+        } else if (importMode === 'current') {
+            if (!activeChecklist) {
+              toast({ title: "Import failed", description: "No active checklist to import into.", variant: "destructive" });
+              return;
+            }
+            if (newTasks.length > 0) {
+              const updatedChecklist = { ...activeChecklist, tasks: [...activeChecklist.tasks, ...newTasks] };
+              await handleUpdateChecklist(updatedChecklist);
+              toast({ title: "Import successful", description: `${newTasks.length} tasks added to "${activeChecklist.name}".` });
+            } else {
+              toast({ title: "Import failed", description: "No valid tasks found in the file.", variant: "destructive" });
+            }
         }
       } catch (error) {
         console.error("Error during import:", error);
         toast({ title: "Import failed", description: "An unexpected error occurred while parsing the file.", variant: "destructive" });
       } finally {
+        setImportMode(null);
         if (fileInputRef.current) {
           fileInputRef.current.value = "";
         }
@@ -294,7 +290,7 @@ export default function Home() {
       <input
         type="file"
         ref={fileInputRef}
-        onChange={handleImportMarkdown}
+        onChange={handleFileSelectedForImport}
         accept=".md"
         className="hidden"
       />
@@ -304,7 +300,7 @@ export default function Home() {
         onSwitch={handleSwitchChecklist}
         onAdd={() => setIsNewChecklistDialogOpen(true)}
         onDelete={handleDeleteChecklist}
-        onImport={() => fileInputRef.current?.click()}
+        onInitiateImport={handleInitiateImport}
         onExportMarkdown={handleExportMarkdown}
         onExportPdf={handleExportPdf}
         progress={progress}

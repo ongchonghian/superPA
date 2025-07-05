@@ -34,7 +34,7 @@ interface ChecklistHeaderProps {
   onSwitch: (id: string) => void;
   onAdd: () => void;
   onDelete: (id: string) => void;
-  onImport: () => void;
+  onInitiateImport: (mode: 'new' | 'current') => void;
   onExportMarkdown: () => void;
   onExportPdf: () => void;
   progress: number;
@@ -47,7 +47,7 @@ export function ChecklistHeader({
   onSwitch,
   onAdd,
   onDelete,
-  onImport,
+  onInitiateImport,
   onExportMarkdown,
   onExportPdf,
   progress,
@@ -107,9 +107,22 @@ export function ChecklistHeader({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onImport}>
-                <FileUp className="mr-2 h-4 w-4" /> Import from Markdown...
-              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <FileUp className="mr-2 h-4 w-4" /> Import...
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent>
+                  <DropdownMenuItem onSelect={() => onInitiateImport('new')}>
+                    As New Checklist
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onSelect={() => onInitiateImport('current')}
+                    disabled={!hasActiveChecklist}
+                  >
+                    Add to Current Checklist
+                  </DropdownMenuItem>
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger disabled={!hasActiveChecklist}>
                   <FileDown className="mr-2 h-4 w-4" /> Export
