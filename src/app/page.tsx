@@ -26,7 +26,7 @@ import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
 import { ChecklistAiSuggestionDialog } from '@/components/checklist-ai-suggestion-dialog';
-import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion } from '@/ai/flows/suggest-checklist-next-steps';
+import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion, InformationRequest } from '@/ai/flows/suggest-checklist-next-steps';
 import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
 import { TaskDialog } from '@/components/task-dialog';
 import { TaskRemarksSheet } from '@/components/task-remarks-sheet';
@@ -543,6 +543,15 @@ export default function Home() {
   const handleUploadDocuments = useCallback(async (files: FileList) => {
     if (!activeChecklist) {
       toast({ title: "Error", description: "No active checklist selected.", variant: "destructive" });
+      return;
+    }
+
+    if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || !process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET) {
+      toast({
+          title: "Firebase Not Configured",
+          description: "Your Firebase storage is not configured. Please check your environment variables to enable file uploads.",
+          variant: "destructive",
+      });
       return;
     }
 
