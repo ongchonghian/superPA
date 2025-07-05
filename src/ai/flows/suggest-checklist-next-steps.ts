@@ -29,7 +29,6 @@ const ChecklistSuggestionSchema = z.object({
     suggestion: z.string().describe('The suggested AI To-Do item, formatted as "[ai-todo|pending] {description}".'),
     context: z.string().describe('A brief explanation of why this suggestion is being made, referencing the source remark(s) or to-do(s).'),
 });
-export type ChecklistSuggestion = z.infer<typeof ChecklistSuggestionSchema>;
 
 const SuggestChecklistNextStepsOutputSchema = z.object({
   suggestions: z
@@ -47,6 +46,8 @@ const prompt = ai.definePrompt({
   input: {schema: SuggestChecklistNextStepsInputSchema},
   output: {schema: SuggestChecklistNextStepsOutputSchema},
   prompt: `You are an AI assistant that analyzes a list of tasks and their discussion histories to identify sub-tasks that can be automated. Your goal is to propose these automatable sub-tasks as "AI To-Dos".
+
+Your analysis must be exhaustive. Do not stop after finding one or two suggestions. Continue to process every single task provided in the input and extract all possible automation opportunities.
 
 You will be given a list of tasks. You MUST analyze every single task provided in the input. For each task, review its description and discussion history to find opportunities for automation.
 
