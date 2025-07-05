@@ -87,6 +87,11 @@ export default function Home() {
 
     return () => unsubscribe();
   }, [activeChecklistId, toast]);
+  
+  // FR4.3: Invalidate AI suggestions cache when the underlying checklist data changes.
+  useEffect(() => {
+    setAiSuggestions([]);
+  }, [activeChecklist]);
 
   const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
     const { id, ...data } = updatedChecklist;
@@ -387,8 +392,8 @@ export default function Home() {
     toast({ title: "Preparing PDF...", description: "Your browser's print dialog will open." });
     setTimeout(() => window.print(), 500);
   };
-
-  const handleGetChecklistSuggestions = async () => {
+  
+  const fetchAiSuggestions = useCallback(async () => {
     if (!activeChecklist) return;
 
     const incompleteTasks = activeChecklist.tasks.filter(t => t.status !== 'complete');
@@ -402,8 +407,7 @@ export default function Home() {
     }
 
     setIsAiLoading(true);
-    setAiSuggestions([]);
-    setIsAiDialogOpen(true);
+    setAiSuggestions([]); // Always clear before a new fetch.
 
     try {
       const tasksToAnalyze = incompleteTasks.map(task => ({
@@ -428,10 +432,22 @@ export default function Home() {
         description: 'Failed to generate suggestions. Please try again.',
         variant: 'destructive',
       });
+      setAiSuggestions([]); // Clear on error as well
     } finally {
       setIsAiLoading(false);
     }
-  };
+  }, [activeChecklist, toast]);
+
+  const handleGetAiSuggestions = useCallback(() => {
+    // If suggestions are already cached, just show them.
+    if (aiSuggestions.length > 0) {
+      setIsAiDialogOpen(true);
+    } else {
+      // Otherwise, open the dialog (it will show a loading state) and fetch.
+      setIsAiDialogOpen(true);
+      fetchAiSuggestions();
+    }
+  }, [aiSuggestions, fetchAiSuggestions]);
 
   const handleAddSuggestionAsRemark = useCallback((suggestionToAdd: ChecklistSuggestion) => {
     if (!activeChecklist) return;
@@ -493,7 +509,7 @@ export default function Home() {
         onInitiateImport={handleInitiateImport}
         onExportMarkdown={handleExportMarkdown}
         onExportPdf={handleExportPdf}
-        onGetAiSuggestions={handleGetChecklistSuggestions}
+        onGetAiSuggestions={handleGetAiSuggestions}
         progress={progress}
         hasActiveChecklist={!!activeChecklist}
       />
@@ -548,7 +564,7 @@ export default function Home() {
         isLoading={isAiLoading}
         tasks={activeChecklist?.tasks || []}
         onAddSuggestion={handleAddSuggestionAsRemark}
-        onRegenerate={handleGetChecklistSuggestions}
+        onRegenerate={fetchAiSuggestions}
       />
     </div>
   );
