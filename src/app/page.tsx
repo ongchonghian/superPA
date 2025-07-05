@@ -22,7 +22,7 @@ import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
 import { ChecklistAiSuggestionDialog } from '@/components/checklist-ai-suggestion-dialog';
-import type { ChecklistSuggestion } from '@/ai/flows/suggest-checklist-next-steps';
+import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion } from '@/ai/flows/suggest-checklist-next-steps';
 import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
 
 // This is a placeholder for a real user authentication system.
@@ -40,7 +40,7 @@ export default function Home() {
   const [importMode, setImportMode] = useState<'new' | 'current' | null>(null);
   const [importConflict, setImportConflict] = useState<{ conflictingId: string; name: string; tasks: Task[] } | null>(null);
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<ChecklistSuggestion[]>([]);
+  const [aiAnalysisResult, setAiAnalysisResult] = useState<SuggestChecklistNextStepsOutput | null>(null);
   const [isAiLoading, setIsAiLoading] = useState(false);
 
   // Effect to fetch the list of checklist names and IDs for the current user
@@ -50,6 +50,18 @@ export default function Home() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
+
+      // New logic to handle active checklist ID after list updates
+      setActiveChecklistId(currentId => {
+        // If there's no current ID, or the current one was deleted
+        if (!currentId || !metas.some(m => m.id === currentId)) {
+          // Select the first available one, or null if empty
+          return metas.length > 0 ? metas[0].id : null;
+        }
+        // Otherwise, keep the current one
+        return currentId;
+      });
+      
       setIsLoading(false);
     }, (error) => {
       console.error("Error fetching checklists: ", error);
@@ -59,31 +71,6 @@ export default function Home() {
 
     return () => unsubscribe();
   }, [toast]);
-
-  // Effect to manage the active checklist ID based on the available metas.
-  // This hook is the source of truth for what checklist is currently being viewed.
-  useEffect(() => {
-    // Don't run this logic until the initial checklist load is complete.
-    if (isLoading) {
-      return;
-    }
-
-    // Check if the current active checklist ID is still valid.
-    const activeIdStillExists = checklistMetas.some(meta => meta.id === activeChecklistId);
-
-    // If the active checklist has been deleted, or if no checklist is selected yet...
-    if (!activeIdStillExists) {
-      // If there are other checklists available, set the first one as active.
-      if (checklistMetas.length > 0) {
-        setActiveChecklistId(checklistMetas[0].id);
-      } 
-      // If there are no checklists left at all, clear the active ID.
-      else {
-        setActiveChecklistId(null);
-      }
-    }
-  }, [checklistMetas, isLoading]); // This effect should ONLY run when the list of checklists changes.
-
 
   // Effect to subscribe to the currently active checklist for real-time updates
   useEffect(() => {
@@ -95,9 +82,6 @@ export default function Home() {
       if (doc.exists()) {
         setActiveChecklist({ id: doc.id, ...doc.data() } as Checklist);
       } else {
-        // If the document doesn't exist, it means it was deleted.
-        // The previous useEffect will handle selecting a new active checklist or clearing it.
-        // We set the local state to null to avoid showing stale data.
         setActiveChecklist(null);
       }
     }, (error) => {
@@ -110,7 +94,7 @@ export default function Home() {
   
   // FR4.3: Invalidate AI suggestions cache when the underlying checklist data changes.
   useEffect(() => {
-    setAiSuggestions([]);
+    setAiAnalysisResult(null);
   }, [activeChecklist]);
 
   const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
@@ -151,7 +135,7 @@ export default function Home() {
       try {
         await deleteDoc(doc(db, 'checklists', id));
         toast({ title: "Success", description: "Checklist deleted." });
-        // The reactive effects will now handle updating the UI correctly.
+        // The main useEffect listening to checklistMetas will handle the UI update.
       } catch (error) {
         console.error("Error deleting checklist: ", error);
         toast({ title: "Error", description: "Failed to delete checklist.", variant: "destructive" });
@@ -427,7 +411,7 @@ export default function Home() {
     }
 
     setIsAiLoading(true);
-    setAiSuggestions([]); // Always clear before a new fetch.
+    setAiAnalysisResult(null); // Always clear before a new fetch.
 
     try {
       const tasksToAnalyze = incompleteTasks.map(task => ({
@@ -437,12 +421,12 @@ export default function Home() {
       }));
 
       const result = await suggestChecklistNextSteps({ tasks: tasksToAnalyze });
-      setAiSuggestions(result.suggestions);
+      setAiAnalysisResult(result);
 
-      if (result.suggestions.length === 0) {
+      if (!result.suggestions?.length && !result.informationRequests?.length) {
         toast({
             title: "No new suggestions found",
-            description: "The AI couldn't find any new automatable tasks.",
+            description: "The AI couldn't find any new automatable tasks or opportunities to ask for more information.",
         });
       }
     } catch (error) {
@@ -452,7 +436,7 @@ export default function Home() {
         description: 'Failed to generate suggestions. Please try again.',
         variant: 'destructive',
       });
-      setAiSuggestions([]); // Clear on error as well
+      setAiAnalysisResult(null); // Clear on error as well
     } finally {
       setIsAiLoading(false);
     }
@@ -460,14 +444,14 @@ export default function Home() {
 
   const handleGetAiSuggestions = useCallback(() => {
     // If suggestions are already cached, just show them.
-    if (aiSuggestions.length > 0) {
+    if (aiAnalysisResult) {
       setIsAiDialogOpen(true);
     } else {
       // Otherwise, open the dialog (it will show a loading state) and fetch.
       setIsAiDialogOpen(true);
       fetchAiSuggestions();
     }
-  }, [aiSuggestions, fetchAiSuggestions]);
+  }, [aiAnalysisResult, fetchAiSuggestions]);
 
   const handleAddSuggestionAsRemark = useCallback((suggestionToAdd: ChecklistSuggestion) => {
     if (!activeChecklist) return;
@@ -493,7 +477,13 @@ export default function Home() {
     
     handleUpdateChecklist({ ...activeChecklist, tasks: updatedTasks });
 
-    setAiSuggestions(currentSuggestions => currentSuggestions.filter(s => !(s.suggestion === suggestionToAdd.suggestion && s.taskId === suggestionToAdd.taskId)));
+    setAiAnalysisResult(currentResult => {
+      if (!currentResult) return null;
+      return {
+          ...currentResult,
+          suggestions: (currentResult.suggestions || []).filter(s => !(s.suggestion === suggestionToAdd.suggestion && s.taskId === suggestionToAdd.taskId))
+      };
+    });
     
     toast({
         title: "AI To-Do Added",
@@ -507,7 +497,7 @@ export default function Home() {
     return (completedTasks / activeChecklist.tasks.length) * 100;
   }, [activeChecklist]);
 
-  if (isLoading && !activeChecklist) {
+  if (isLoading && !activeChecklistId) {
     return <Loading />;
   }
 
@@ -582,7 +572,8 @@ export default function Home() {
        <ChecklistAiSuggestionDialog
         open={isAiDialogOpen}
         onOpenChange={setIsAiDialogOpen}
-        suggestions={aiSuggestions}
+        suggestions={aiAnalysisResult?.suggestions || []}
+        informationRequests={aiAnalysisResult?.informationRequests || []}
         isLoading={isAiLoading}
         tasks={activeChecklist?.tasks || []}
         onAddSuggestion={handleAddSuggestionAsRemark}
