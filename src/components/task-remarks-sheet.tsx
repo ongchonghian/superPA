@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -38,6 +38,18 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
     const [mentionQuery, setMentionQuery] = useState('');
     const [isMentionPopoverOpen, setIsMentionPopoverOpen] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+    const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (open && scrollAreaRef.current) {
+            // Scroll to the bottom when the sheet opens or when new remarks are added
+            setTimeout(() => {
+                if (scrollAreaRef.current) {
+                    scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
+                }
+            }, 100);
+        }
+    }, [open, task?.remarks.length]);
 
     const handleAddRemark = () => {
         if (!task || !newRemark.trim()) return;
@@ -80,7 +92,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
         const currentValue = newRemark;
         const cursorPos = inputRef.current?.selectionStart;
         
-        if (cursorPos === undefined) return;
+        if (cursorPos === undefined || cursorPos === null) return;
 
         const textBeforeCursor = currentValue.substring(0, cursorPos);
         const lastAt = textBeforeCursor.lastIndexOf('@');
@@ -116,8 +128,8 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
                     <SheetTitle>Remarks for: {task.description}</SheetTitle>
                     <SheetDescription>View and add comments to this task. Type @ to mention a user.</SheetDescription>
                 </SheetHeader>
-                <ScrollArea className="flex-1 my-4 -mx-4 sm:-mx-6 px-4 sm:px-6">
-                    <div className="space-y-4 py-4">
+                <ScrollArea className="flex-1 my-4 -mx-4 sm:-mx-6" viewportRef={scrollAreaRef}>
+                    <div className="space-y-4 py-4 px-4 sm:px-6">
                         {task.remarks.length > 0 ? (
                             [...task.remarks].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()).map(remark => (
                                 <div key={remark.id} className="flex items-start gap-3">

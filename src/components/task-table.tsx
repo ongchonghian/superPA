@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Table,
   TableBody,
@@ -113,6 +113,15 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
   const [remarksTask, setRemarksTask] = useState<Task | null>(null);
   const [isRemarksSheetOpen, setIsRemarksSheetOpen] = useState(false);
+
+  useEffect(() => {
+    if (isRemarksSheetOpen && remarksTask) {
+      const updatedTask = checklist.tasks.find(t => t.id === remarksTask.id);
+      if (updatedTask) {
+        setRemarksTask(updatedTask);
+      }
+    }
+  }, [checklist.tasks, remarksTask?.id, isRemarksSheetOpen]);
 
   const assignees = useMemo(() => [...new Set(checklist.tasks.map(t => t.assignee))], [checklist.tasks]);
 
@@ -342,9 +351,9 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                         <DropdownMenuItem onSelect={() => {setDialogTask(task); setIsTaskDialogOpen(true);}} disabled={task.status === 'complete'}>
                             Edit Task
                         </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => {setRemarksTask(task); setIsRemarksSheetOpen(true);}} disabled={task.status === 'complete'}>
+                        <DropdownMenuItem onSelect={() => {setRemarksTask(task); setIsRemarksSheetOpen(true);}}>
                             <MessageSquare className="mr-2 h-4 w-4" />
-                            Add Remark
+                            {task.status === 'complete' ? 'View Remarks' : 'Add Remark'}
                         </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => {setAiSuggestionTask(task); setIsAiDialogOpen(true);}} disabled={task.status === 'complete'}>
                           <WandSparkles className="mr-2 h-4 w-4" />
