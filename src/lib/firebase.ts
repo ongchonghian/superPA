@@ -1,3 +1,4 @@
+
 import { initializeApp, getApps, getApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getAuth, type Auth } from "firebase/auth";
@@ -17,8 +18,15 @@ let db: Firestore | null = null;
 let auth: Auth | null = null;
 let storage: FirebaseStorage | null = null;
 
-// This boolean flag is true only if the essential Firebase config variables are provided.
-export const isFirebaseConfigured = !!(firebaseConfig.apiKey && firebaseConfig.projectId);
+// This boolean flag is true only if all essential Firebase config variables are provided.
+export const isFirebaseConfigured = !!(
+  firebaseConfig.apiKey &&
+  firebaseConfig.authDomain &&
+  firebaseConfig.projectId &&
+  firebaseConfig.storageBucket &&
+  firebaseConfig.messagingSenderId &&
+  firebaseConfig.appId
+);
 
 if (isFirebaseConfigured) {
   try {
