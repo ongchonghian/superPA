@@ -40,6 +40,7 @@ import { TaskDialog } from './task-dialog';
 import { AiSuggestionDialog } from './ai-suggestion-dialog';
 import { TaskRemarksSheet } from './task-remarks-sheet';
 import {PRIORITIES, STATUSES} from '@/lib/data';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 type SortKey = keyof Task | '';
 
@@ -196,14 +197,24 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                   <TableCell className={`font-medium align-top ${task.status === 'complete' ? 'text-muted-foreground' : ''}`}>
                     <div className={task.status === 'complete' ? 'line-through' : ''}>{task.description}</div>
                     {task.remarks && task.remarks.length > 0 && (
-                      <div className="mt-2 space-y-2 pl-4 border-l-2 border-border/80">
-                        {task.remarks.map(remark => (
-                          <div key={remark.id} className="text-xs">
-                            <div className="flex items-baseline gap-2">
-                              <span className="font-semibold text-foreground">{remark.userId}</span>
-                              <span className="text-muted-foreground">{formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}</span>
+                      <div className="mt-4 space-y-3">
+                        {task.remarks
+                          .slice()
+                          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+                          .map(remark => (
+                          <div key={remark.id} className="flex items-start gap-2.5">
+                            <Avatar className="h-6 w-6 border text-xs">
+                                <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
+                            </Avatar>
+                            <div className="grid gap-0.5">
+                                <div className="flex items-center gap-2">
+                                    <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
+                                    </p>
+                                </div>
+                                <p className="text-sm text-foreground/90 whitespace-pre-wrap">{remark.text}</p>
                             </div>
-                            <p className="text-muted-foreground pl-1 whitespace-pre-wrap">{remark.text}</p>
                           </div>
                         ))}
                       </div>
