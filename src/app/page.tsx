@@ -6,7 +6,8 @@ import { TaskTable } from '@/components/task-table';
 import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
-import { isFirebaseConfigured, db, storage } from '@/lib/firebase';
+import { isFirebaseConfigured, db, storage, auth } from '@/lib/firebase';
+import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import { ref as storageRef, uploadBytes, deleteObject } from 'firebase/storage';
 import {
@@ -35,6 +36,8 @@ import { DocumentManager } from '@/components/document-manager';
 
 export default function Home() {
   const { toast } = useToast();
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
@@ -57,17 +60,47 @@ export default function Home() {
   if (!isFirebaseConfigured) {
     return <FirebaseNotConfigured />;
   }
+  
+  // Effect to handle anonymous authentication
+  useEffect(() => {
+    if (!auth) {
+      setIsAuthLoading(false);
+      return;
+    }
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUserId(user.uid);
+        setIsAuthLoading(false);
+      } else {
+        try {
+          const userCredential = await signInAnonymously(auth);
+          setUserId(userCredential.user.uid);
+        } catch (error) {
+          console.error("Anonymous sign-in failed: ", error);
+          toast({
+            title: "Authentication Failed",
+            description: "Could not connect to the service. Please try again later.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsAuthLoading(false);
+        }
+      }
+    });
+
+    return () => unsubscribe();
+  }, [toast]);
 
   // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
-    if (!db) {
+    if (!db || !userId) {
       setChecklistMetas([]);
       setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
-    const q = query(collection(db, 'checklists'), where('ownerId', '==', 'local_user'));
+    const q = query(collection(db, 'checklists'), where('ownerId', '==', userId));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
@@ -93,7 +126,7 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [toast]);
+  }, [toast, userId]);
 
   // Effect to subscribe to the currently active checklist for real-time updates
   useEffect(() => {
@@ -155,12 +188,12 @@ export default function Home() {
   }, [toast]);
 
   const handleSaveNewChecklist = useCallback(async (name: string, tasks: Task[] = []) => {
-    if (name) {
+    if (name && userId) {
       try {
         const newChecklist: Omit<Checklist, 'id'> = {
           name: name,
           tasks: tasks,
-          ownerId: 'local_user',
+          ownerId: userId,
           documentIds: [],
         };
         const docRef = await addDoc(collection(db!, 'checklists'), newChecklist);
@@ -171,7 +204,7 @@ export default function Home() {
         toast({ title: "Error", description: "Failed to create checklist.", variant: "destructive" });
       }
     }
-  }, [toast]);
+  }, [toast, userId]);
   
   const handleSwitchChecklist = useCallback((id: string) => {
     setActiveChecklistId(id);
@@ -312,13 +345,13 @@ export default function Home() {
           if (remarkMatch && currentTask) {
             let fullRemarkText = remarkMatch[1].trim();
             let text = fullRemarkText;
-            let userId = 'system';
+            let remarkUserId = 'system';
             let timestamp = new Date().toISOString();
 
             const userMatch = fullRemarkText.match(/(.*)\s+\(by (.*)\)$/);
             if (userMatch) {
                 text = userMatch[1].trim();
-                userId = userMatch[2].trim();
+                remarkUserId = userMatch[2].trim();
             }
 
             const timestampMatch = text.match(/^#(\d{8})\s*(.*)/);
@@ -340,7 +373,7 @@ export default function Home() {
               finalRemarkText = `[ai-todo|pending] ${aiTodoMatchOld[1].trim()}`;
             }
 
-            currentTask.remarks.push({ id: `rem_${Date.now()}_${Math.random()}`, text: finalRemarkText, userId, timestamp });
+            currentTask.remarks.push({ id: `rem_${Date.now()}_${Math.random()}`, text: finalRemarkText, userId: remarkUserId, timestamp });
           }
         }
         if (currentTask) { newTasks.push(currentTask); }
@@ -702,7 +735,7 @@ export default function Home() {
   },[activeChecklist, handleUpdateChecklist]);
 
 
-  if (isLoading) {
+  if (isAuthLoading || isLoading) {
     return <Loading />;
   }
 
@@ -742,7 +775,7 @@ export default function Home() {
               onUpdate={handleUpdateChecklist}
             />
           </>
-        ) : !isLoading ? (
+        ) : userId ? (
           <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border text-center h-[60vh]">
             <h2 className="text-xl font-semibold text-foreground">No Checklist Selected</h2>
             <p className="mt-2 text-muted-foreground">Create a new checklist or import one to get started.</p>
@@ -805,7 +838,7 @@ export default function Home() {
         onOpenChange={setIsRemarksSheetOpen}
         onUpdateTask={handleUpdateTask}
         assignees={assignees}
-        userId={'local_user'}
+        userId={userId ?? undefined}
       />
     </div>
   );
