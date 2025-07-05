@@ -50,13 +50,6 @@ export default function Home() {
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
-
-      if (!activeChecklistId && metas.length > 0) {
-        setActiveChecklistId(metas[0].id);
-      } else if (metas.length === 0) {
-        setActiveChecklistId(null);
-        setActiveChecklist(null);
-      }
       setIsLoading(false);
     }, (error) => {
       console.error("Error fetching checklists: ", error);
@@ -65,7 +58,24 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [activeChecklistId, toast]);
+  }, [toast]);
+
+  // Effect to manage the active checklist ID based on the available metas
+  useEffect(() => {
+    if (isLoading) return;
+
+    const activeIdExists = checklistMetas.some(meta => meta.id === activeChecklistId);
+
+    // If there's no active ID, or the active ID was deleted, pick a new one.
+    if (!activeIdExists) {
+        if (checklistMetas.length > 0) {
+            setActiveChecklistId(checklistMetas[0].id);
+        } else if (activeChecklistId !== null) {
+            // If no checklists exist, ensure activeId is null.
+            setActiveChecklistId(null);
+        }
+    }
+  }, [checklistMetas, activeChecklistId, isLoading]);
 
   // Effect to subscribe to the currently active checklist for real-time updates
   useEffect(() => {
@@ -76,10 +86,9 @@ export default function Home() {
     const unsubscribe = onSnapshot(doc(db, 'checklists', activeChecklistId), (doc) => {
       if (doc.exists()) {
         setActiveChecklist({ id: doc.id, ...doc.data() } as Checklist);
-      } else {
-        setActiveChecklist(null);
-        setActiveChecklistId(null); // Reset if it was deleted
       }
+      // If the doc doesn't exist, it means it was deleted.
+      // The other useEffect listening on checklistMetas will handle switching to a new active checklist.
     }, (error) => {
       console.error("Error fetching active checklist: ", error);
       toast({ title: "Error", description: "Could not load selected checklist.", variant: "destructive" });
@@ -131,22 +140,13 @@ export default function Home() {
       try {
         await deleteDoc(doc(db, 'checklists', id));
         toast({ title: "Success", description: "Checklist deleted." });
-        
-        // Explicitly handle switching the active checklist if the deleted one was active.
-        if (activeChecklistId === id) {
-          const remainingMetas = checklistMetas.filter(c => c.id !== id);
-          if (remainingMetas.length > 0) {
-            setActiveChecklistId(remainingMetas[0].id);
-          } else {
-            setActiveChecklistId(null);
-          }
-        }
+        // The reactive effects will handle updating the UI.
       } catch (error) {
         console.error("Error deleting checklist: ", error);
         toast({ title: "Error", description: "Failed to delete checklist.", variant: "destructive" });
       }
     }
-  }, [toast, activeChecklistId, checklistMetas]);
+  }, [toast]);
   
   const handleInitiateImport = (mode: 'new' | 'current') => {
     setImportMode(mode);
@@ -496,7 +496,7 @@ export default function Home() {
     return (completedTasks / activeChecklist.tasks.length) * 100;
   }, [activeChecklist]);
 
-  if (isLoading) {
+  if (isLoading && !activeChecklist) {
     return <Loading />;
   }
 
@@ -528,7 +528,7 @@ export default function Home() {
             checklist={activeChecklist}
             onUpdate={handleUpdateChecklist}
           />
-        ) : (
+        ) : !isLoading ? (
           <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border text-center h-[60vh]">
             <h2 className="text-xl font-semibold text-foreground">No Checklist Selected</h2>
             <p className="mt-2 text-muted-foreground">Create a new checklist or import one to get started.</p>
@@ -539,6 +539,8 @@ export default function Home() {
               Create Checklist
             </button>
           </div>
+        ) : (
+          <Loading />
         )}
       </main>
       <div className="print-only hidden">
