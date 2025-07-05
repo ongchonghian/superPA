@@ -205,16 +205,32 @@ export default function Home() {
             let assignee = 'Unassigned';
             let dueDate = new Date().toISOString().split('T')[0];
 
-            const detailsMatch = restOfLine.match(/(.*)\(Priority:\s*(.*),\s*Assignee:\s*(.*),\s*Due:\s*(.*)\)/);
-            if (detailsMatch) {
-              description = detailsMatch[1].trim();
-              const parsedPriority = detailsMatch[2].trim() as TaskPriority;
-              if (PRIORITIES.includes(parsedPriority)) { priority = parsedPriority; }
-              assignee = detailsMatch[3].trim();
-              try {
-                const parsedDate = new Date(detailsMatch[4].trim());
-                if(!isNaN(parsedDate.getTime())) { dueDate = parsedDate.toISOString().split('T')[0]; }
-              } catch (error) { /* keep default if date is invalid */ }
+            const detailsMatch = description.match(/(.*)\((.*)\)$/);
+            if (detailsMatch && detailsMatch[2]) {
+                description = detailsMatch[1].trim();
+                const detailsStr = detailsMatch[2];
+                const detailsArr = detailsStr.split(',').map(d => d.trim());
+
+                detailsArr.forEach(detail => {
+                    const [key, ...valueParts] = detail.split(':').map(p => p.trim());
+                    const value = valueParts.join(':');
+
+                    if (key.toLowerCase() === 'priority') {
+                        const parsedPriority = value as TaskPriority;
+                        if (PRIORITIES.includes(parsedPriority)) {
+                            priority = parsedPriority;
+                        }
+                    } else if (key.toLowerCase() === 'assignee') {
+                        assignee = value;
+                    } else if (key.toLowerCase() === 'due') {
+                        try {
+                            const parsedDate = new Date(value);
+                            if (!isNaN(parsedDate.getTime())) {
+                                dueDate = parsedDate.toISOString().split('T')[0];
+                            }
+                        } catch (error) { /* keep default if date is invalid */ }
+                    }
+                });
             }
 
             currentTask = {

@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import {
   ArrowUpDown,
+  MessageSquare,
   MoreHorizontal,
   Plus,
   Trash2,
@@ -36,6 +37,7 @@ import type { Checklist, Task, TaskPriority, TaskStatus } from '@/lib/types';
 import { format, parseISO } from 'date-fns';
 import { TaskDialog } from './task-dialog';
 import { AiSuggestionDialog } from './ai-suggestion-dialog';
+import { TaskRemarksSheet } from './task-remarks-sheet';
 import {PRIORITIES, STATUSES} from '@/lib/data';
 
 type SortKey = keyof Task | '';
@@ -69,6 +71,8 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [aiSuggestionTask, setAiSuggestionTask] = useState<Task | null>(null);
   const [isAiDialogOpen, setIsAiDialogOpen] = useState(false);
+  const [remarksTask, setRemarksTask] = useState<Task | null>(null);
+  const [isRemarksSheetOpen, setIsRemarksSheetOpen] = useState(false);
 
   const assignees = useMemo(() => [...new Set(checklist.tasks.map(t => t.assignee))], [checklist.tasks]);
 
@@ -104,12 +108,17 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
     }
   };
 
+  const handleUpdateTask = (taskToUpdate: Task) => {
+      const newTasks = checklist.tasks.map(t => (t.id === taskToUpdate.id ? taskToUpdate : t));
+      onUpdate({ ...checklist, tasks: newTasks });
+  };
+  
   const handleSaveTask = (taskToSave: Omit<Task, 'remarks'>) => {
       const exists = checklist.tasks.some(t => t.id === taskToSave.id);
       if (exists) {
-        const updatedTask = { ...checklist.tasks.find(t => t.id === taskToSave.id)!, ...taskToSave };
-        const newTasks = checklist.tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
-        onUpdate({ ...checklist, tasks: newTasks });
+        const existingTask = checklist.tasks.find(t => t.id === taskToSave.id)!;
+        const updatedTask = { ...existingTask, ...taskToSave };
+        handleUpdateTask(updatedTask);
       } else {
         const newTask = {...taskToSave, remarks: []};
         const newTasks = [...checklist.tasks, newTask];
@@ -208,6 +217,10 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                         <DropdownMenuItem onSelect={() => {setDialogTask(task); setIsTaskDialogOpen(true);}}>
                             Edit Task
                         </DropdownMenuItem>
+                        <DropdownMenuItem onSelect={() => {setRemarksTask(task); setIsRemarksSheetOpen(true);}}>
+                            <MessageSquare className="mr-2 h-4 w-4" />
+                            View/Add Remarks
+                        </DropdownMenuItem>
                         <DropdownMenuItem onSelect={() => {setAiSuggestionTask(task); setIsAiDialogOpen(true);}}>
                           <WandSparkles className="mr-2 h-4 w-4" />
                           Suggest Next Steps
@@ -247,6 +260,12 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         task={aiSuggestionTask}
         open={isAiDialogOpen}
         onOpenChange={setIsAiDialogOpen}
+      />
+      <TaskRemarksSheet
+        task={remarksTask}
+        open={isRemarksSheetOpen}
+        onOpenChange={setIsRemarksSheetOpen}
+        onUpdateTask={handleUpdateTask}
       />
     </div>
   );
