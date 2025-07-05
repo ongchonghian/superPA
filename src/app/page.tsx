@@ -28,6 +28,7 @@ import { PRIORITIES } from '@/lib/data';
 import { ChecklistAiSuggestionDialog } from '@/components/checklist-ai-suggestion-dialog';
 import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion } from '@/ai/flows/suggest-checklist-next-steps';
 import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
+import { processDocument } from '@/ai/flows/process-document';
 import { TaskDialog } from '@/components/task-dialog';
 import { TaskRemarksSheet } from '@/components/task-remarks-sheet';
 import { DocumentManager } from '@/components/document-manager';
@@ -60,21 +61,18 @@ export default function Home() {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
       
-      if (metas.length === 0) {
-        setActiveChecklistId(null);
-        setActiveChecklist(null);
-      }
-
-      setActiveChecklistId(currentId => {
-        const currentChecklistExists = metas.some(m => m.id === currentId);
-        if (currentChecklistExists) {
+      const newActiveChecklistId = currentId => {
+        if (metas.some(m => m.id === currentId)) {
           return currentId;
         }
-        if (metas.length > 0) {
-          return metas[0].id;
-        }
-        return null;
-      });
+        return metas.length > 0 ? metas[0].id : null;
+      };
+
+      setActiveChecklistId(newActiveChecklistId);
+
+      if (metas.length === 0) {
+        setActiveChecklist(null);
+      }
       
       setIsLoading(false);
     }, (error) => {
@@ -90,19 +88,25 @@ export default function Home() {
   useEffect(() => {
     if (!activeChecklistId) {
       setActiveChecklist(null);
+      setDocuments([]);
       return;
     }
+
+    setIsLoading(true);
     const unsubscribe = onSnapshot(doc(db, 'checklists', activeChecklistId), (doc) => {
       if (doc.exists()) {
         const newChecklist = { id: doc.id, ...doc.data() } as Checklist;
         setActiveChecklist(newChecklist);
       } else {
+        // This can happen if the active checklist is deleted
         setActiveChecklist(null);
-        setDocuments([]);
+        setActiveChecklistId(null);
       }
+      setIsLoading(false);
     }, (error) => {
       console.error("Error fetching active checklist: ", error);
       toast({ title: "Error", description: "Could not load selected checklist.", variant: "destructive" });
+      setIsLoading(false);
     });
 
     return () => unsubscribe();
@@ -166,6 +170,7 @@ export default function Home() {
       try {
         await deleteDoc(doc(db, 'checklists', id));
         toast({ title: "Success", description: "Checklist deleted." });
+        // The useEffect hook for checklistMetas will handle switching to a new checklist or the empty state.
       } catch (error) {
         console.error("Error deleting checklist: ", error);
         toast({ title: "Error", description: "Failed to delete checklist.", variant: "destructive" });
@@ -449,7 +454,16 @@ export default function Home() {
         discussionHistory: task.remarks.map(r => `${r.userId}: ${r.text}`).join('\n')
       }));
 
-      const result = await suggestChecklistNextSteps({ tasks: tasksToAnalyze });
+      const contextDocuments = documents
+        .filter(doc => doc.status === 'ready' && doc.markdownContent)
+        .map(doc => `## Document: ${doc.fileName}\n\n${doc.markdownContent}`)
+        .join('\n\n---\n\n');
+
+      const result = await suggestChecklistNextSteps({ 
+        tasks: tasksToAnalyze,
+        contextDocuments: contextDocuments || undefined,
+      });
+
       setAiAnalysisResult(result);
 
       if (!result.suggestions?.length && !result.informationRequests?.length) {
@@ -469,7 +483,7 @@ export default function Home() {
     } finally {
       setIsAiLoading(false);
     }
-  }, [activeChecklist, toast]);
+  }, [activeChecklist, documents, toast]);
 
   const handleGetAiSuggestions = useCallback(() => {
     setIsAiDialogOpen(true);
@@ -535,17 +549,13 @@ export default function Home() {
 
     try {
       const uploadPromises = Array.from(files).map(async (file) => {
-        const newDocRef = doc(collection(db, "documents")); // Create a ref with a new ID
+        const newDocRef = doc(collection(db, "documents"));
         const storagePath = `documents/${activeChecklist.id}/${newDocRef.id}-${file.name}`;
         const fileRef = storageRef(storage, storagePath);
 
-        // Upload the file
         await uploadBytes(fileRef, file);
 
-        // Use a batch to write to Firestore
         const batch = writeBatch(db);
-
-        // 1. Create the new document record
         batch.set(newDocRef, {
             checklistId: activeChecklist.id,
             fileName: file.name,
@@ -553,19 +563,19 @@ export default function Home() {
             status: 'processing',
             createdAt: new Date().toISOString(),
         });
-
-        // 2. Add the document ID to the checklist's array
         const checklistRef = doc(db, 'checklists', activeChecklist.id);
         batch.update(checklistRef, {
             documentIds: arrayUnion(newDocRef.id)
         });
-
         await batch.commit();
+        
+        // Trigger background processing, do not await
+        processDocument({ documentId: newDocRef.id, storagePath });
       });
 
       await Promise.all(uploadPromises);
 
-      uploadToast.update({ id: uploadToast.id, title: "Upload complete", description: `${files.length} document(s) uploaded successfully.` });
+      uploadToast.update({ id: uploadToast.id, title: "Upload complete", description: `${files.length} document(s) uploaded successfully and are now being processed.` });
     } catch (error) {
       console.error("Error uploading documents:", error);
       uploadToast.update({ id: uploadToast.id, title: "Upload Failed", description: "Could not upload documents. Please try again.", variant: "destructive" });
@@ -588,22 +598,14 @@ export default function Home() {
       const documentData = docSnap.data() as Document;
       const fileStorageRef = storageRef(storage, documentData.storagePath);
 
-      // Use a batch to ensure atomicity
       const batch = writeBatch(db);
-
-      // 1. Delete Firestore document
       batch.delete(docRef);
-
-      // 2. Remove ID from checklist's documentIds array
       const checklistRef = doc(db, 'checklists', activeChecklist.id);
       batch.update(checklistRef, {
         documentIds: arrayRemove(documentId)
       });
-
-      // Commit the batch first
       await batch.commit();
 
-      // Then delete file from Storage
       await deleteObject(fileStorageRef);
 
       toast({ title: "Success", description: "Document deleted." });
@@ -619,7 +621,6 @@ export default function Home() {
     return (completedTasks / activeChecklist.tasks.length) * 100;
   }, [activeChecklist]);
 
-  // States for remarks sheet, to be controlled from multiple places
   const [remarksTask, setRemarksTask] = useState<Task | null>(null);
   const [isRemarksSheetOpen, setIsRemarksSheetOpen] = useState(false);
 
@@ -647,15 +648,15 @@ export default function Home() {
     };
   }, [activeChecklist]);
   
-  // States for task dialog
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
 
   const assignees = useMemo(() => {
-    return [...new Set(activeChecklist?.tasks.map(t => t.assignee) || [])];
+    if (!activeChecklist) return [];
+    return [...new Set(activeChecklist.tasks.map(t => t.assignee))];
   }, [activeChecklist]);
 
-  if (isLoading && !activeChecklistId) {
+  if (isLoading && !activeChecklist) {
     return <Loading />;
   }
 

@@ -20,7 +20,8 @@ const TaskAnalysisSchema = z.object({
 });
 
 const SuggestChecklistNextStepsInputSchema = z.object({
-  tasks: z.array(TaskAnalysisSchema).describe('A list of tasks to analyze for potential AI To-Do items.')
+  tasks: z.array(TaskAnalysisSchema).describe('A list of tasks to analyze for potential AI To-Do items.'),
+  contextDocuments: z.string().optional().describe('Concatenated markdown content from related context documents to provide project context.'),
 });
 export type SuggestChecklistNextStepsInput = z.infer<typeof SuggestChecklistNextStepsInputSchema>;
 
@@ -54,6 +55,14 @@ const prompt = ai.definePrompt({
   input: {schema: SuggestChecklistNextStepsInputSchema},
   output: {schema: SuggestChecklistNextStepsOutputSchema},
   prompt: `You are an AI assistant that analyzes a list of tasks and their discussion histories to identify sub-tasks that can be automated. Your goal is to propose these automatable sub-tasks as "AI To-Dos".
+
+{{#if contextDocuments}}
+You have been provided with context documents. These documents are the primary source of truth for the project. Analyze them to understand the project's goals, scope, and technical details. Use this deep understanding to inform your suggestions and make them highly relevant and specific.
+
+--- CONTEXT DOCUMENTS START ---
+{{{contextDocuments}}}
+--- CONTEXT DOCUMENTS END ---
+{{/if}}
 
 Your analysis must be exhaustive. Process every single task provided in the input.
 
