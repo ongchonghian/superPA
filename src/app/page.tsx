@@ -28,7 +28,6 @@ import { PRIORITIES } from '@/lib/data';
 import { ChecklistAiSuggestionDialog } from '@/components/checklist-ai-suggestion-dialog';
 import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion } from '@/ai/flows/suggest-checklist-next-steps';
 import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
-import { processDocument } from '@/ai/flows/process-document';
 import { TaskDialog } from '@/components/task-dialog';
 import { TaskRemarksSheet } from '@/components/task-remarks-sheet';
 import { DocumentManager } from '@/components/document-manager';
@@ -36,15 +35,6 @@ import { DocumentManager } from '@/components/document-manager';
 // This is a placeholder for a real user authentication system.
 // In a real app, you would get this from your auth provider.
 const USER_ID = "user_123";
-
-const fileToDataUri = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-};
 
 export default function Home() {
   const { toast } = useToast();
@@ -470,13 +460,15 @@ export default function Home() {
       }));
 
       const contextDocuments = documents
-        .filter(doc => doc.status === 'ready' && doc.markdownContent)
-        .map(doc => `## Document: ${doc.fileName}\n\n${doc.markdownContent}`)
-        .join('\n\n---\n\n');
+        .filter(doc => doc.status === 'ready')
+        .map(doc => ({
+            fileName: doc.fileName,
+            storagePath: doc.storagePath,
+        }));
 
       const result = await suggestChecklistNextSteps({ 
         tasks: tasksToAnalyze,
-        contextDocuments: contextDocuments || undefined,
+        contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
       });
 
       setAiAnalysisResult(result);
@@ -570,7 +562,7 @@ export default function Home() {
             checklistId: activeChecklist.id,
             fileName: file.name,
             storagePath: storagePath,
-            status: 'processing',
+            status: 'ready',
             createdAt: new Date().toISOString(),
         });
         const checklistRef = doc(db, 'checklists', activeChecklist.id);
@@ -578,17 +570,11 @@ export default function Home() {
             documentIds: arrayUnion(newDocRef.id)
         });
         await batch.commit();
-        
-        // Convert file to data URI and trigger processing
-        const fileDataUri = await fileToDataUri(file);
-        
-        // Trigger background processing, do not await
-        processDocument({ documentId: newDocRef.id, fileDataUri });
       });
 
       await Promise.all(uploadPromises);
 
-      uploadToast.update({ id: uploadToast.id, title: "Upload complete", description: `${files.length} document(s) uploaded successfully and are now being processed.` });
+      uploadToast.update({ id: uploadToast.id, title: "Upload complete", description: `${files.length} document(s) are ready for AI context.` });
     } catch (error) {
       console.error("Error uploading documents:", error);
       uploadToast.update({ id: uploadToast.id, title: "Upload Failed", description: "Could not upload documents. Please try again.", variant: "destructive" });

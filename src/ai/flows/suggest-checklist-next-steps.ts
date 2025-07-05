@@ -19,9 +19,14 @@ const TaskAnalysisSchema = z.object({
     .describe('The historical discussion related to the task, including existing remarks and AI To-Dos.'),
 });
 
+const DocumentContextSchema = z.object({
+  fileName: z.string(),
+  storagePath: z.string().describe('The path to the document in Firebase Storage.'),
+});
+
 const SuggestChecklistNextStepsInputSchema = z.object({
   tasks: z.array(TaskAnalysisSchema).describe('A list of tasks to analyze for potential AI To-Do items.'),
-  contextDocuments: z.string().optional().describe('Concatenated markdown content from related context documents to provide project context.'),
+  contextDocuments: z.array(DocumentContextSchema).optional().describe('A list of context documents to provide project context.'),
 });
 export type SuggestChecklistNextStepsInput = z.infer<typeof SuggestChecklistNextStepsInputSchema>;
 
@@ -50,17 +55,31 @@ export async function suggestChecklistNextSteps(input: SuggestChecklistNextSteps
   return suggestChecklistNextStepsFlow(input);
 }
 
+
+const PromptInputSchema = SuggestChecklistNextStepsInputSchema.extend({
+    documentsWithUris: z.array(z.object({
+        fileName: z.string(),
+        uri: z.string()
+    })).optional()
+});
+
+
 const prompt = ai.definePrompt({
   name: 'suggestChecklistNextStepsPrompt',
-  input: {schema: SuggestChecklistNextStepsInputSchema},
+  input: {schema: PromptInputSchema},
   output: {schema: SuggestChecklistNextStepsOutputSchema},
   prompt: `You are an AI assistant that analyzes a list of tasks and their discussion histories to identify sub-tasks that can be automated. Your goal is to propose these automatable sub-tasks as "AI To-Dos".
 
-{{#if contextDocuments}}
+{{#if documentsWithUris}}
 You have been provided with context documents. These documents are the primary source of truth for the project. Analyze them to understand the project's goals, scope, and technical details. Use this deep understanding to inform your suggestions and make them highly relevant and specific.
 
 --- CONTEXT DOCUMENTS START ---
-{{{contextDocuments}}}
+{{#each documentsWithUris}}
+## Document: {{{fileName}}}
+{{{media url=uri}}}
+
+---
+{{/each}}
 --- CONTEXT DOCUMENTS END ---
 {{/if}}
 
@@ -104,8 +123,23 @@ const suggestChecklistNextStepsFlow = ai.defineFlow(
     inputSchema: SuggestChecklistNextStepsInputSchema,
     outputSchema: SuggestChecklistNextStepsOutputSchema,
   },
-  async input => {
-    const {output} = await prompt(input);
+  async (input) => {
+    const bucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+    if (input.contextDocuments && !bucket) {
+        throw new Error("Firebase Storage bucket name is not configured in environment variables. Cannot process documents.");
+    }
+
+    const documentsWithUris = input.contextDocuments?.map(doc => ({
+        ...doc,
+        uri: `gs://${bucket}/${doc.storagePath}`
+    }));
+
+    const promptInput = {
+        ...input,
+        documentsWithUris: documentsWithUris,
+    };
+    
+    const {output} = await prompt(promptInput);
     return output!;
   }
 );

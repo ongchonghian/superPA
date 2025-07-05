@@ -4,8 +4,7 @@ import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { File, Loader2, Trash2, UploadCloud } from 'lucide-react';
-import type { Document, DocumentStatus } from '@/lib/types';
-import { Badge } from './ui/badge';
+import type { Document } from '@/lib/types';
 import { Input } from './ui/input';
 
 interface DocumentManagerProps {
@@ -14,12 +13,6 @@ interface DocumentManagerProps {
   onDelete: (documentId: string) => Promise<void>;
   isUploading: boolean;
 }
-
-const statusColors: { [key in DocumentStatus]: string } = {
-  processing: 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/50 dark:text-yellow-300 dark:border-yellow-800',
-  ready: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/50 dark:text-green-300 dark:border-green-800',
-  failed: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-900/50 dark:text-red-300 dark:border-red-800',
-};
 
 export function DocumentManager({ documents, onUpload, onDelete, isUploading }: DocumentManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -95,9 +88,6 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading }: 
                         <span className="font-medium text-sm truncate" title={doc.fileName}>{doc.fileName}</span>
                     </div>
                   <div className="flex items-center gap-2 sm:gap-4">
-                     <Badge variant="outline" className={`capitalize ${statusColors[doc.status]}`}>
-                        {doc.status}
-                      </Badge>
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => handleDeleteClick(doc.id)} disabled={isUploading}>
                         <Trash2 className="h-4 w-4" />
                         <span className="sr-only">Delete document</span>
