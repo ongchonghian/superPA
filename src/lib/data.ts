@@ -3,10 +3,13 @@ import type { Checklist, TaskPriority, TaskStatus } from './types';
 export const PRIORITIES = ['High', 'Medium', 'Low'] as const;
 export const STATUSES = ['complete', 'in progress', 'pending'] as const;
 
+// Note: this data is now only for reference and is not used to initialize the app.
+// The app now fetches data from Firestore.
 export const initialChecklists: Checklist[] = [
   {
     id: 'cl_1',
     name: 'Q3 Feature Launch',
+    ownerId: 'user_123',
     tasks: [
       {
         id: 'task_1',
@@ -15,7 +18,12 @@ export const initialChecklists: Checklist[] = [
         priority: 'High',
         assignee: 'Alice',
         dueDate: '2024-08-15',
-        discussion: 'Initial mockups are done. Need to finalize the color palette.'
+        remarks: [{
+          id: 'rem_1',
+          text: 'Initial mockups are done. Need to finalize the color palette.',
+          userId: 'Alice',
+          timestamp: new Date('2024-07-20T10:00:00Z').toISOString()
+        }]
       },
       {
         id: 'task_2',
@@ -24,7 +32,12 @@ export const initialChecklists: Checklist[] = [
         priority: 'High',
         assignee: 'Bob',
         dueDate: '2024-08-20',
-        discussion: 'Using OAuth 2.0. Encountered an issue with the redirect URI.'
+        remarks: [{
+          id: 'rem_2',
+          text: 'Using OAuth 2.0. Encountered an issue with the redirect URI.',
+          userId: 'Bob',
+          timestamp: new Date('2024-07-21T14:30:00Z').toISOString()
+        }]
       },
       {
         id: 'task_3',
@@ -33,7 +46,12 @@ export const initialChecklists: Checklist[] = [
         priority: 'Medium',
         assignee: 'Charlie',
         dueDate: '2024-08-25',
-        discussion: 'Waiting for credentials from the infra team.'
+        remarks: [{
+          id: 'rem_3',
+          text: 'Waiting for credentials from the infra team.',
+          userId: 'Charlie',
+          timestamp: new Date('2024-07-22T09:00:00Z').toISOString()
+        }]
       },
       {
         id: 'task_4',
@@ -42,13 +60,14 @@ export const initialChecklists: Checklist[] = [
         priority: 'Low',
         assignee: 'Alice',
         dueDate: '2024-09-01',
-        discussion: 'Initial draft using Swagger/OpenAPI. Needs review.'
+        remarks: []
       }
     ]
   },
   {
     id: 'cl_2',
     name: 'Marketing Campaign',
+    ownerId: 'user_123',
     tasks: [
       {
         id: 'task_5',
@@ -57,7 +76,7 @@ export const initialChecklists: Checklist[] = [
         priority: 'High',
         assignee: 'Diana',
         dueDate: '2024-08-10',
-        discussion: 'First draft is ready for review. Focusing on the new AI features.'
+        remarks: []
       },
       {
         id: 'task_6',
@@ -66,7 +85,7 @@ export const initialChecklists: Checklist[] = [
         priority: 'Medium',
         assignee: 'Eve',
         dueDate: '2024-08-18',
-        discussion: 'Waiting for final branding guidelines from the design team.'
+        remarks: []
       }
     ]
   }

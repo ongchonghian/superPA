@@ -4,7 +4,7 @@ import { Toaster } from "@/components/ui/toaster"
 
 export const metadata: Metadata = {
   title: 'Alpha Release Hub',
-  description: 'Manage your project releases with ease and intelligence.',
+  description: 'A real-time, multi-user project management tool designed to facilitate task tracking, collaboration, and AI-assisted workflow automation.',
 };
 
 export default function RootLayout({

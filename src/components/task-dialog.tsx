@@ -22,7 +22,6 @@ import {
 } from '@/components/ui/form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -39,7 +38,6 @@ const taskSchema = z.object({
   dueDate: z.string().min(1, 'Due date is required'),
   priority: z.enum(PRIORITIES),
   status: z.enum(STATUSES),
-  discussion: z.string().optional(),
 });
 
 type TaskFormValues = z.infer<typeof taskSchema>;
@@ -48,7 +46,7 @@ interface TaskDialogProps {
   task: Partial<Task> | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (task: Task) => void;
+  onSave: (task: Omit<Task, 'remarks'>) => void;
 }
 
 export function TaskDialog({ task, open, onOpenChange, onSave }: TaskDialogProps) {
@@ -60,7 +58,6 @@ export function TaskDialog({ task, open, onOpenChange, onSave }: TaskDialogProps
       dueDate: new Date().toISOString().split('T')[0],
       priority: 'Medium',
       status: 'pending',
-      discussion: '',
       ...task,
     },
   });
@@ -72,7 +69,6 @@ export function TaskDialog({ task, open, onOpenChange, onSave }: TaskDialogProps
       dueDate: new Date().toISOString().split('T')[0],
       priority: 'Medium',
       status: 'pending',
-      discussion: '',
       ...task,
     });
   }, [task, form]);
@@ -178,19 +174,6 @@ export function TaskDialog({ task, open, onOpenChange, onSave }: TaskDialogProps
                 )}
               />
             </div>
-            <FormField
-              control={form.control}
-              name="discussion"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Discussion / Notes</FormLabel>
-                  <FormControl>
-                    <Textarea placeholder="Add any relevant notes or discussion history here..." {...field} />
-                  </FormControl>
-                   <FormMessage />
-                </FormItem>
-              )}
-            />
             <DialogFooter>
                 <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
                 <Button type="submit">Save Task</Button>

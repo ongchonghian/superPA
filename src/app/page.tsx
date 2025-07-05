@@ -1,108 +1,135 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ChecklistHeader } from '@/components/checklist-header';
 import { TaskTable } from '@/components/task-table';
-import { initialChecklists } from '@/lib/data';
-import type { Checklist, Task, TaskStatus, TaskPriority } from '@/lib/types';
-import { useToast } from "@/hooks/use-toast"
+import type { Checklist, Task, TaskStatus, TaskPriority, Remark } from '@/lib/types';
+import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
+import { db } from '@/lib/firebase';
+import {
+  collection,
+  query,
+  where,
+  onSnapshot,
+  doc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
 
-const LOCAL_STORAGE_KEYS = {
-  CHECKLISTS: 'alpha-release-hub-checklists',
-  ACTIVE_ID: 'alpha-release-hub-active',
-};
+// This is a placeholder for a real user authentication system.
+// In a real app, you would get this from your auth provider.
+const USER_ID = "user_123";
 
 export default function Home() {
-  const { toast } = useToast()
-  const [isMounted, setIsMounted] = useState(false);
-  const [checklists, setChecklists] = useState<Checklist[]>([]);
+  const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(true);
+  const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
+  const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
   const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Effect to fetch the list of checklist names and IDs for the current user
   useEffect(() => {
-    setIsMounted(true);
-  }, []);
+    setIsLoading(true);
+    const q = query(collection(db, 'checklists'), where('ownerId', '==', USER_ID));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
+      setChecklistMetas(metas);
 
-  useEffect(() => {
-    if (isMounted) {
-      try {
-        const storedChecklists = localStorage.getItem(LOCAL_STORAGE_KEYS.CHECKLISTS);
-        const storedActiveId = localStorage.getItem(LOCAL_STORAGE_KEYS.ACTIVE_ID);
-        
-        if (storedChecklists) {
-          const parsedChecklists = JSON.parse(storedChecklists) as Checklist[];
-          setChecklists(parsedChecklists);
-          
-          if (storedActiveId && parsedChecklists.some(c => c.id === storedActiveId)) {
-            setActiveChecklistId(storedActiveId);
-          } else if (parsedChecklists.length > 0) {
-            setActiveChecklistId(parsedChecklists[0].id);
-          } else {
-            setActiveChecklistId(null);
-          }
-        } else {
-          setChecklists(initialChecklists);
-          setActiveChecklistId(initialChecklists[0]?.id || null);
-        }
-      } catch (error) {
-        console.error("Failed to parse from localStorage", error);
-        setChecklists(initialChecklists);
-        setActiveChecklistId(initialChecklists[0]?.id || null);
+      if (!activeChecklistId && metas.length > 0) {
+        setActiveChecklistId(metas[0].id);
+      } else if (metas.length === 0) {
+        setActiveChecklistId(null);
+        setActiveChecklist(null);
       }
-    }
-  }, [isMounted]);
+      setIsLoading(false);
+    }, (error) => {
+      console.error("Error fetching checklists: ", error);
+      toast({ title: "Error", description: "Could not load checklists.", variant: "destructive" });
+      setIsLoading(false);
+    });
 
+    return () => unsubscribe();
+  }, [activeChecklistId, toast]);
+
+  // Effect to subscribe to the currently active checklist for real-time updates
   useEffect(() => {
-    if (isMounted) {
-      localStorage.setItem(LOCAL_STORAGE_KEYS.CHECKLISTS, JSON.stringify(checklists));
-      if (activeChecklistId) {
-        localStorage.setItem(LOCAL_STORAGE_KEYS.ACTIVE_ID, activeChecklistId);
-      }
+    if (!activeChecklistId) {
+      setActiveChecklist(null);
+      return;
     }
-  }, [checklists, activeChecklistId, isMounted]);
+    const unsubscribe = onSnapshot(doc(db, 'checklists', activeChecklistId), (doc) => {
+      if (doc.exists()) {
+        setActiveChecklist({ id: doc.id, ...doc.data() } as Checklist);
+      } else {
+        setActiveChecklist(null);
+        setActiveChecklistId(null); // Reset if it was deleted
+      }
+    }, (error) => {
+      console.error("Error fetching active checklist: ", error);
+      toast({ title: "Error", description: "Could not load selected checklist.", variant: "destructive" });
+    });
 
-  const activeChecklist = checklists.find(c => c.id === activeChecklistId) || null;
+    return () => unsubscribe();
+  }, [activeChecklistId, toast]);
 
-  const handleUpdateChecklist = useCallback((updatedChecklist: Checklist) => {
-    setChecklists(prev => prev.map(c => c.id === updatedChecklist.id ? updatedChecklist : c));
-  }, []);
-
-  const handleAddChecklist = useCallback(() => {
-    const newName = prompt("Enter new checklist name:");
-    if (newName) {
-      const newChecklist: Checklist = {
-        id: `cl_${Date.now()}`,
-        name: newName,
-        tasks: [],
-      };
-      setChecklists(prev => [...prev, newChecklist]);
-      setActiveChecklistId(newChecklist.id);
-      toast({ title: "Success", description: `Checklist "${newName}" created.` });
+  const handleUpdateChecklist = useCallback(async (updatedChecklist: Checklist) => {
+    if (!updatedChecklist.id) return;
+    const { id, ...data } = updatedChecklist;
+    const checklistRef = doc(db, 'checklists', id);
+    try {
+      await updateDoc(checklistRef, data);
+    } catch (error) {
+      console.error("Error updating checklist: ", error);
+      toast({ title: "Error", description: "Failed to save changes.", variant: "destructive" });
     }
   }, [toast]);
-  
+
+  const handleAddChecklist = useCallback(async () => {
+    const newName = prompt("Enter new checklist name:");
+    if (newName) {
+      try {
+        const newChecklist: Omit<Checklist, 'id'> = {
+          name: newName,
+          tasks: [],
+          ownerId: USER_ID,
+        };
+        const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
+        setActiveChecklistId(docRef.id);
+        toast({ title: "Success", description: `Checklist "${newName}" created.` });
+      } catch (error) {
+        console.error("Error adding checklist: ", error);
+        toast({ title: "Error", description: "Failed to create checklist.", variant: "destructive" });
+      }
+    }
+  }, [toast]);
+
   const handleSwitchChecklist = useCallback((id: string) => {
     setActiveChecklistId(id);
   }, []);
 
-  const handleDeleteChecklist = useCallback((id: string) => {
+  const handleDeleteChecklist = useCallback(async (id: string) => {
     if (window.confirm("Are you sure you want to delete this checklist? This action cannot be undone.")) {
-      const remainingChecklists = checklists.filter(c => c.id !== id);
-      setChecklists(remainingChecklists);
-      if (activeChecklistId === id) {
-        setActiveChecklistId(remainingChecklists[0]?.id || null);
+      try {
+        await deleteDoc(doc(db, 'checklists', id));
+        toast({ title: "Success", description: "Checklist deleted." });
+        // The useEffect for checklistMetas will handle switching to another checklist or the empty state
+      } catch (error) {
+        console.error("Error deleting checklist: ", error);
+        toast({ title: "Error", description: "Failed to delete checklist.", variant: "destructive" });
       }
-      toast({ title: "Success", description: "Checklist deleted." });
     }
-  }, [checklists, activeChecklistId, toast]);
+  }, [toast]);
 
   const handleImportMarkdown = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !activeChecklist) return;
+    if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const content = e.target?.result as string;
       const lines = content.split('\n');
       const newTasks: Task[] = lines.map(line => {
@@ -117,24 +144,27 @@ export default function Home() {
           priority: 'Medium' as TaskPriority,
           assignee: 'Unassigned',
           dueDate: new Date().toISOString().split('T')[0],
-          discussion: '',
+          remarks: [],
         };
       }).filter((task): task is Task => task !== null);
 
       if (newTasks.length > 0) {
-        const updatedChecklist = {
-          ...activeChecklist,
-          tasks: [...activeChecklist.tasks, ...newTasks]
+        const newChecklistName = file.name.replace('.md', '');
+         const newChecklist: Omit<Checklist, 'id'> = {
+          name: newChecklistName,
+          tasks: newTasks,
+          ownerId: USER_ID,
         };
-        handleUpdateChecklist(updatedChecklist);
-        toast({ title: "Import successful", description: `${newTasks.length} tasks imported.` });
+        const docRef = await addDoc(collection(db, 'checklists'), newChecklist);
+        setActiveChecklistId(docRef.id);
+        toast({ title: "Import successful", description: `Checklist "${newChecklistName}" with ${newTasks.length} tasks imported.` });
       } else {
         toast({ title: "Import failed", description: "No valid tasks found in the file.", variant: "destructive" });
       }
     };
     reader.readAsText(file);
     if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+      fileInputRef.current.value = "";
     }
   };
 
@@ -142,8 +172,10 @@ export default function Home() {
     if (!activeChecklist) return;
     const markdownContent = activeChecklist.tasks.map(task => {
       const status = task.status === 'complete' ? '[x]' : '[ ]';
-      return `- ${status} ${task.description} (Priority: ${task.priority}, Assignee: ${task.assignee}, Due: ${task.dueDate})`;
-    }).join('\n');
+      const taskLine = `- ${status} ${task.description} (Priority: ${task.priority}, Assignee: ${task.assignee}, Due: ${task.dueDate})`;
+      const remarksLines = task.remarks.map(r => `  - ${r.text} [${r.userId} @ ${new Date(r.timestamp).toLocaleString()}]`).join('\n');
+      return `${taskLine}${remarksLines ? `\n${remarksLines}` : ''}`;
+    }).join('\n\n');
 
     const blob = new Blob([markdownContent], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
@@ -159,8 +191,14 @@ export default function Home() {
     toast({ title: "Preparing PDF...", description: "Your browser's print dialog will open." });
     setTimeout(() => window.print(), 500);
   };
+  
+  const progress = useMemo(() => {
+    if (!activeChecklist || activeChecklist.tasks.length === 0) return 0;
+    const completedTasks = activeChecklist.tasks.filter(t => t.status === 'complete').length;
+    return (completedTasks / activeChecklist.tasks.length) * 100;
+  }, [activeChecklist]);
 
-  if (!isMounted) {
+  if (isLoading) {
     return <Loading />;
   }
 
@@ -174,25 +212,27 @@ export default function Home() {
         className="hidden"
       />
       <ChecklistHeader
-        checklists={checklists}
-        activeChecklist={activeChecklist}
+        checklists={checklistMetas}
+        activeChecklistId={activeChecklistId}
         onSwitch={handleSwitchChecklist}
         onAdd={handleAddChecklist}
         onDelete={handleDeleteChecklist}
         onImport={() => fileInputRef.current?.click()}
         onExportMarkdown={handleExportMarkdown}
         onExportPdf={handleExportPdf}
+        progress={progress}
+        hasActiveChecklist={!!activeChecklist}
       />
       <main className="p-4 sm:p-6 lg:p-8">
         {activeChecklist ? (
-          <TaskTable 
-            checklist={activeChecklist} 
-            onUpdate={handleUpdateChecklist} 
+          <TaskTable
+            checklist={activeChecklist}
+            onUpdate={handleUpdateChecklist}
           />
         ) : (
           <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border text-center h-[60vh]">
             <h2 className="text-xl font-semibold text-foreground">No Checklist Selected</h2>
-            <p className="mt-2 text-muted-foreground">Create a new checklist to get started.</p>
+            <p className="mt-2 text-muted-foreground">Create a new checklist or import one to get started.</p>
             <button
               onClick={handleAddChecklist}
               className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
@@ -203,7 +243,7 @@ export default function Home() {
         )}
       </main>
       <div className="print-only hidden">
-          {activeChecklist && <TaskTable checklist={activeChecklist} onUpdate={() => {}} />}
+        {activeChecklist && <TaskTable checklist={activeChecklist} onUpdate={() => {}} />}
       </div>
     </div>
   );

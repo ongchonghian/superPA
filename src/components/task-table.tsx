@@ -104,22 +104,16 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
     }
   };
 
-  const handleUpdateTask = (updatedTask: Task) => {
-    const newTasks = checklist.tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
-    onUpdate({ ...checklist, tasks: newTasks });
-  };
-  
-  const handleAddTask = (newTask: Task) => {
-    const newTasks = [...checklist.tasks, newTask];
-    onUpdate({ ...checklist, tasks: newTasks });
-  };
-  
-  const handleSaveTask = (taskToSave: Task) => {
+  const handleSaveTask = (taskToSave: Omit<Task, 'remarks'>) => {
       const exists = checklist.tasks.some(t => t.id === taskToSave.id);
       if (exists) {
-        handleUpdateTask(taskToSave);
+        const updatedTask = { ...checklist.tasks.find(t => t.id === taskToSave.id)!, ...taskToSave };
+        const newTasks = checklist.tasks.map(t => (t.id === updatedTask.id ? updatedTask : t));
+        onUpdate({ ...checklist, tasks: newTasks });
       } else {
-        handleAddTask(taskToSave);
+        const newTask = {...taskToSave, remarks: []};
+        const newTasks = [...checklist.tasks, newTask];
+        onUpdate({ ...checklist, tasks: newTasks });
       }
   };
 

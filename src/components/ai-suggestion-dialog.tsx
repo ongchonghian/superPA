@@ -31,9 +31,10 @@ export function AiSuggestionDialog({ task, open, onOpenChange }: AiSuggestionDia
     setIsLoading(true);
     setSuggestions([]);
     try {
+      const discussionHistory = task.remarks.map(r => `${r.userId}: ${r.text}`).join('\n');
       const result = await suggestNextSteps({
         taskDescription: task.description,
-        discussionHistory: task.discussion,
+        discussionHistory: discussionHistory,
       });
       setSuggestions(result.nextSteps);
     } catch (error) {
