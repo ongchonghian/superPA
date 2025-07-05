@@ -69,24 +69,33 @@ export default function Home() {
       setAuthInitialized(true);
       return;
     }
-    const unsubscribe = onAuthStateChanged(auth, user => {
-      if (user) {
-        setUserId(user.uid);
-        setAuthInitialized(true);
-      } else {
-        signInAnonymously(auth).then(userCredential => {
-          setUserId(userCredential.user.uid);
+
+    try {
+      const unsubscribe = onAuthStateChanged(auth, user => {
+        if (user) {
+          setUserId(user.uid);
           setAuthInitialized(true);
-        }).catch((error: any) => {
-          console.error("Anonymous sign-in failed: ", error);
-          if (error.code === 'auth/configuration-not-found') {
-            setAuthError(true);
-          }
-          setAuthInitialized(true);
-        });
+        } else {
+          signInAnonymously(auth).then(userCredential => {
+            setUserId(userCredential.user.uid);
+            setAuthInitialized(true);
+          }).catch((error: any) => {
+            console.error("Anonymous sign-in failed: ", error);
+            if (error.code === 'auth/configuration-not-found') {
+              setAuthError(true);
+            }
+            setAuthInitialized(true);
+          });
+        }
+      });
+      return () => unsubscribe();
+    } catch (error: any) {
+      console.error("Failed to initialize auth listener:", error);
+      if (error.code === 'auth/configuration-not-found') {
+        setAuthError(true);
       }
-    });
-    return () => unsubscribe();
+      setAuthInitialized(true);
+    }
   }, []);
   
   // Effect to fetch the list of checklist names and IDs for the current user
