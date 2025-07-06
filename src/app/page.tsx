@@ -536,7 +536,7 @@ export default function Home() {
         try {
           const fileRef = storageRef(storage, doc.storagePath);
           const fileBytes = await getBytes(fileRef);
-          const dataUri = await arrayBufferToDataUri(fileBytes, doc.mimeType || 'application/octet-stream');
+          const dataUri = await arrayBufferToDataUri(fileBytes, doc.mimeType || 'text/plain');
           return {
             fileName: doc.fileName,
             fileDataUri: dataUri,
@@ -659,13 +659,22 @@ export default function Home() {
             // Create a document record in Firestore
             const newDocRef = doc(collection(db, "documents"));
             const batch = writeBatch(db);
+            
+            let mimeType = file.type;
+            if (!mimeType || mimeType === 'application/octet-stream') {
+                if (file.name.endsWith('.md')) {
+                    mimeType = 'text/markdown';
+                } else {
+                    mimeType = 'text/plain'; 
+                }
+            }
 
             batch.set(newDocRef, {
                 checklistId: activeChecklist.id,
                 fileName: file.name,
                 storagePath: path,
                 createdAt: new Date().toISOString(),
-                mimeType: file.type || 'application/octet-stream',
+                mimeType: mimeType,
             });
 
             // Associate document with checklist
