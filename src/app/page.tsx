@@ -565,7 +565,7 @@ export default function Home() {
   }, [documents, storage, fileToDataUri, toast]);
   
   const fetchAiSuggestions = useCallback(async () => {
-    if (!activeChecklist) return;
+    if (!activeChecklist || !db) return;
     
     const incompleteTasks = activeChecklist.tasks.filter(t => t.status !== 'complete');
 
@@ -594,6 +594,41 @@ export default function Home() {
         contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
       });
 
+      if (result.capabilityWarnings && result.capabilityWarnings.length > 0) {
+        const batch = writeBatch(db);
+        const checklistRef = doc(db, 'checklists', activeChecklist.id);
+        
+        const docSnap = await getDoc(checklistRef);
+        if (docSnap.exists()) {
+          const currentChecklist = { id: docSnap.id, ...docSnap.data() } as Checklist;
+          let tasks = [...currentChecklist.tasks];
+
+          result.capabilityWarnings.forEach(warning => {
+            const newRemark: Remark = {
+              id: `rem_warn_${Date.now()}_${Math.random()}`,
+              text: `Capability Warning: ${warning.warning}`,
+              userId: 'ai_assistant',
+              timestamp: new Date().toISOString(),
+            };
+            
+            tasks = tasks.map(t => {
+              if (t.id === warning.taskId) {
+                return { ...t, remarks: [...t.remarks, newRemark] };
+              }
+              return t;
+            });
+          });
+
+          batch.update(checklistRef, { tasks });
+          await batch.commit();
+          
+          toast({
+            title: "Capability Warnings Added",
+            description: `${result.capabilityWarnings.length} task(s) were identified as potentially beyond AI capabilities. See remarks for details.`,
+          });
+        }
+      }
+
       setAiAnalysisResult(result);
 
       if (!result.suggestions?.length) {
@@ -613,7 +648,7 @@ export default function Home() {
     } finally {
       setIsAiLoading(false);
     }
-  }, [activeChecklist, getContextDocumentsForAi, toast]);
+  }, [activeChecklist, getContextDocumentsForAi, toast, db]);
 
   const handleAddSuggestionAsRemark = useCallback((suggestionToAdd: ChecklistSuggestion) => {
     if (!activeChecklist) return;
@@ -669,11 +704,9 @@ export default function Home() {
     setRunningRemarkIds(prev => [...prev, remarkToExecute.id]);
     const executionToast = toast({ title: "AI Execution Started", description: "The AI is now working on your to-do." });
 
-    const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
-
     try {
-        // 1. Mark as running (safely)
-        const runningRemarkText = remarkToExecute.text.replace('[ai-todo|pending]', '[ai-todo|running]');
+        // Mark as running
+        const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
         const docSnapBeforeRunning = await getDoc(checklistDocRef);
         if (!docSnapBeforeRunning.exists()) throw new Error("Checklist not found");
         const tasksBeforeRunning = docSnapBeforeRunning.data().tasks as Task[];
@@ -682,16 +715,15 @@ export default function Home() {
             if (t.id !== task.id) return t;
             return {
                 ...t,
-                remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: runningRemarkText } : r)
+                remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: r.text.replace('[ai-todo|pending]', '[ai-todo|running]') } : r)
             };
         });
         await handleUpdateChecklist({ id: activeChecklist.id, tasks: tasksWithRunning });
 
-        // 2. Prepare AI input
+        // Prepare and call executor flow
         const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|pending\]\s*/, '').trim();
         const contextDocuments = await getContextDocumentsForAi();
         
-        // 3. Call executor flow
         const result = await executeAiTodo({
             aiTodoText,
             taskDescription: task.description,
@@ -699,8 +731,7 @@ export default function Home() {
             contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
         });
 
-        // 4. Handle result
-        // 4a. Save to storage
+        // Save result to storage
         const markdownBlob = new Blob([result.resultMarkdown], { type: 'text/markdown;charset=utf-8' });
         const resultFileName = `execution_result_${remarkToExecute.id.substring(4, 10)}.md`;
         const resultPath = `checklists/${activeChecklist.id}/executions/${resultFileName}`;
@@ -708,7 +739,7 @@ export default function Home() {
         await uploadBytes(resultRef, markdownBlob);
         const downloadURL = await getDownloadURL(resultRef);
 
-        // 4b. Create result remark
+        // Update checklist with result
         const resultRemarkText = `AI execution complete. [View results](${downloadURL})\n\n**Summary:**\n${result.summary}`;
         const resultRemark: Remark = {
             id: `rem_res_${Date.now()}`,
@@ -717,9 +748,6 @@ export default function Home() {
             timestamp: new Date().toISOString()
         };
         
-        // 4c. Update original to-do and add result
-        const completedRemarkText = runningRemarkText.replace('[ai-todo|running]', '[ai-todo|completed]');
-        
         const docSnapBeforeCompleted = await getDoc(checklistDocRef);
         if (!docSnapBeforeCompleted.exists()) throw new Error("Checklist not found");
         const currentTasks = docSnapBeforeCompleted.data().tasks as Task[];
@@ -727,7 +755,7 @@ export default function Home() {
         const finalTasks = currentTasks.map(t => {
             if (t.id !== task.id) return t;
             const updatedRemarks = t.remarks.map(r => {
-                if (r.id === remarkToExecute.id) return { ...r, text: completedRemarkText };
+                if (r.id === remarkToExecute.id) return { ...r, text: r.text.replace('[ai-todo|running]', '[ai-todo|completed]') };
                 return r;
             });
             return {
@@ -741,20 +769,46 @@ export default function Home() {
 
     } catch (error: any) {
         console.error("AI execution failed:", error);
-        executionToast.update({ id: executionToast.id, title: "Execution Failed", description: "The AI could not complete the task. Please try again.", variant: "destructive" });
+        executionToast.update({ id: executionToast.id, title: "Execution Failed", description: "The AI could not complete the task. See remarks for details.", variant: "destructive" });
         
-        // Revert status to pending, safely
-        const docSnap = await getDoc(checklistDocRef);
-        if (docSnap.exists()) {
-            const tasksOnFailure = docSnap.data().tasks as Task[];
-            const revertedTasks = tasksOnFailure.map(t => {
+        // Safely revert status to failed and add an error remark
+        try {
+            const checklistDocRef = doc(db!, 'checklists', activeChecklist.id);
+            const docSnap = await getDoc(checklistDocRef);
+            if (!docSnap.exists()) throw new Error("Checklist disappeared during execution failure handling.");
+    
+            const currentTasks = docSnap.data().tasks as Task[];
+            
+            const failureReasonRemark: Remark = {
+                id: `rem_fail_${Date.now()}`,
+                text: `AI execution failed. Error: ${error.message || 'An unknown error occurred.'}`,
+                userId: 'system',
+                timestamp: new Date().toISOString()
+            };
+    
+            const finalTasks = currentTasks.map(t => {
                 if (t.id !== task.id) return t;
-                return {
-                    ...t,
-                    remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: remarkToExecute.text } : r)
-                };
+                
+                let foundRemark = false;
+                const updatedRemarks = t.remarks.map(r => {
+                    if (r.id === remarkToExecute.id) {
+                        foundRemark = true;
+                        // Replace whatever the status was with 'failed'
+                        return { ...r, text: r.text.replace(/\[ai-todo\|(pending|running)\]/, '[ai-todo|failed]') };
+                    }
+                    return r;
+                });
+    
+                // If remark was found, add the failure reason.
+                if (foundRemark) {
+                    return { ...t, remarks: [...updatedRemarks, failureReasonRemark] };
+                }
+                return t;
             });
-            await handleUpdateChecklist({ id: activeChecklist.id, tasks: revertedTasks });
+    
+            await handleUpdateChecklist({ id: activeChecklist.id, tasks: finalTasks });
+        } catch (revertError) {
+            console.error("CRITICAL: Failed to revert AI To-Do status after an execution error.", revertError);
         }
     } finally {
         setRunningRemarkIds(prev => prev.filter(id => id !== remarkToExecute.id));
