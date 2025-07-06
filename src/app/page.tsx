@@ -535,7 +535,7 @@ export default function Home() {
       const tasksToAnalyze = incompleteTasks.map(task => ({
         taskId: task.id,
         taskDescription: task.description,
-        discussionHistory: task.remarks.map(r => `${r.userId}: ${r.text}`).join('\n')
+        discussionHistory: task.remarks.map(r => r.text).join('\n')
       }));
       
       const contextDocumentsPromises = documents.map(async (doc) => {

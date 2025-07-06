@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -64,10 +65,9 @@ const prompt = ai.definePrompt({
 {{#if contextDocuments}}
 You have been provided with context documents. These documents are the primary source of truth for the project. Analyze them to understand the project's goals, scope, and technical details. Use this deep understanding to inform your suggestions and make them highly relevant and specific.
 
---- CONTEXT DOCUMENTS START ---
 {{#each contextDocuments}}
+The document below is named '{{{fileName}}}'. Use it as context.
 {{{media url=fileDataUri}}}
-The document above is named '{{{fileName}}}'. Use it as context.
 {{/each}}
 --- CONTEXT DOCUMENTS END ---
 {{/if}}
@@ -96,12 +96,12 @@ Important Rules:
 
 Here is the list of tasks to analyze:
 {{#each tasks}}
----
+--- TASK START ---
 Task ID: {{{taskId}}}
 Task Description: {{{taskDescription}}}
 Discussion History:
 {{{discussionHistory}}}
----
+--- TASK END ---
 {{/each}}
 `,
 });
