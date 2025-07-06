@@ -522,14 +522,12 @@ export default function Home() {
         discussionHistory: task.remarks.map(r => `${r.userId}: ${r.text}`).join('\n')
       }));
 
-      const projectId = app?.options.projectId;
-      if (!projectId) {
-        toast({ title: "Error", description: "Firebase project ID not found in configuration.", variant: "destructive" });
+      const bucketNameForApi = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+      if (!bucketNameForApi) {
+        toast({ title: "Configuration Error", description: "Firebase Storage bucket is not defined. Cannot provide context to AI.", variant: "destructive" });
         setIsAiLoading(false);
         return;
       }
-
-      const bucketNameForApi = `${projectId}.appspot.com`;
 
       const contextDocuments = documents.map(doc => ({
             fileName: doc.fileName,
@@ -679,29 +677,29 @@ export default function Home() {
     }
   }, [activeChecklist, toast]);
 
+  const confirmAndDeleteDocument = useCallback((documentId: string) => {
+    if (window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+        handleDeleteDocument(documentId);
+    }
+  }, []);
+
   const handleDeleteDocument = useCallback(async (documentId: string) => {
     if (!activeChecklist || !db || !storage) {
         toast({ title: "Error", description: "Cannot delete document: no active checklist.", variant: "destructive" });
         return;
     }
-
-    if (!window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
-        return;
-    }
     
-    let docToDelete: Document | undefined = documents.find(d => d.id === documentId);
+    let docToDelete: Document | undefined;
     
-    if (!docToDelete) {
-        try {
-            const docSnap = await getDoc(doc(db, 'documents', documentId));
-            if (docSnap.exists()) {
-                docToDelete = { id: docSnap.id, ...docSnap.data() } as Document;
-            }
-        } catch (error) {
-            console.error("Error fetching document to delete:", error);
-            toast({ title: "Error", description: "Could not find document record to delete.", variant: "destructive" });
-            return;
+    try {
+        const docSnap = await getDoc(doc(db, 'documents', documentId));
+        if (docSnap.exists()) {
+            docToDelete = { id: docSnap.id, ...docSnap.data() } as Document;
         }
+    } catch (error) {
+        console.error("Error fetching document to delete:", error);
+        toast({ title: "Error", description: "Could not find document record to delete.", variant: "destructive" });
+        return;
     }
     
     if (!docToDelete) {
@@ -711,13 +709,15 @@ export default function Home() {
 
     try {
         const fileRef = storageRef(storage, docToDelete.storagePath);
-        await deleteObject(fileRef);
+        await deleteObject(fileRef).catch(error => {
+            if (error.code !== 'storage/object-not-found') {
+                throw error;
+            }
+        });
     } catch (error: any) {
-        if (error.code !== 'storage/object-not-found') {
-            console.error("Error deleting file from Storage:", error);
-            toast({ title: "Storage Error", description: "Could not delete file. Check storage permissions.", variant: "destructive" });
-            return; // Stop if we can't delete the file, unless it's already gone
-        }
+        console.error("Error deleting file from Storage:", error);
+        toast({ title: "Storage Error", description: "Could not delete file. Check storage permissions.", variant: "destructive" });
+        return;
     }
 
     try {
@@ -735,7 +735,7 @@ export default function Home() {
         console.error("Error committing Firestore deletes:", error);
         toast({ title: "Database Error", description: "Failed to update database records.", variant: "destructive" });
     }
-  }, [activeChecklist, documents, toast]);
+  }, [activeChecklist, toast]);
 
   const progress = useMemo(() => {
     if (!activeChecklist || activeChecklist.tasks.length === 0) return 0;
@@ -834,8 +834,8 @@ export default function Home() {
           <>
             <DocumentManager 
               documents={documents}
+              onDelete={confirmAndDeleteDocument}
               onUpload={handleUploadDocuments}
-              onDelete={handleDeleteDocument}
               isUploading={isUploading}
               storageCorsError={storageCorsError}
             />
@@ -910,3 +910,5 @@ export default function Home() {
     </div>
   );
 }
+
+    
