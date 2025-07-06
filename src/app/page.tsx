@@ -536,7 +536,16 @@ export default function Home() {
         try {
           const fileRef = storageRef(storage, doc.storagePath);
           const fileBytes = await getBytes(fileRef);
-          const dataUri = await arrayBufferToDataUri(fileBytes, doc.mimeType || 'text/plain');
+
+          if (fileBytes.byteLength === 0) {
+            console.warn(`Skipping empty document for AI context: ${doc.fileName}`);
+            return null; // Don't include empty files
+          }
+          
+          // Fallback for existing documents that may have the wrong mimeType
+          const safeMimeType = doc.mimeType === 'application/octet-stream' ? 'text/plain' : doc.mimeType || 'text/plain';
+          const dataUri = await arrayBufferToDataUri(fileBytes, safeMimeType);
+          
           return {
             fileName: doc.fileName,
             fileDataUri: dataUri,
@@ -707,12 +716,6 @@ export default function Home() {
     }
   }, [activeChecklist, toast]);
 
-  const confirmAndDeleteDocument = useCallback((documentId: string) => {
-    if (window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
-        handleDeleteDocument(documentId);
-    }
-  }, []);
-
   const handleDeleteDocument = useCallback(async (documentId: string) => {
     if (!activeChecklist || !db || !storage) {
         toast({ title: "Error", description: "Cannot delete document: no active checklist.", variant: "destructive" });
@@ -864,7 +867,7 @@ export default function Home() {
           <>
             <DocumentManager 
               documents={documents}
-              onDelete={confirmAndDeleteDocument}
+              onDelete={handleDeleteDocument}
               onUpload={handleUploadDocuments}
               isUploading={isUploading}
               storageCorsError={storageCorsError}
