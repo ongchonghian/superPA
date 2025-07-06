@@ -733,12 +733,6 @@ export default function Home() {
         toast({ title: "Database Error", description: "Failed to update database records.", variant: "destructive" });
     }
   }, [activeChecklist, toast]);
-  
-  const confirmAndDeleteDocument = (documentId: string) => {
-    if (window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
-        handleDeleteDocument(documentId);
-    }
-  };
 
   const progress = useMemo(() => {
     if (!activeChecklist || activeChecklist.tasks.length === 0) return 0;
@@ -838,7 +832,7 @@ export default function Home() {
             <DocumentManager 
               documents={documents}
               onUpload={handleUploadDocuments}
-              onDelete={confirmAndDeleteDocument}
+              onDelete={handleDeleteDocument}
               isUploading={isUploading}
               storageCorsError={storageCorsError}
             />
