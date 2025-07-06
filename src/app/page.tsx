@@ -522,10 +522,12 @@ export default function Home() {
         discussionHistory: task.remarks.map(r => `${r.userId}: ${r.text}`).join('\n')
       }));
 
-      const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
+      const bucketNameForApi = projectId ? `${projectId}.appspot.com` : process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+
       const contextDocuments = documents.map(doc => ({
             fileName: doc.fileName,
-            fileUri: `gs://${storageBucket}/${doc.storagePath}`,
+            fileUri: `gs://${bucketNameForApi}/${doc.storagePath}`,
       }));
 
       const result = await suggestChecklistNextSteps({ 
@@ -672,41 +674,49 @@ export default function Home() {
   }, [activeChecklist, toast]);
 
   const handleDeleteDocument = useCallback(async (documentId: string) => {
- console.log('handleDeleteDocument called', documentId);
     if (!activeChecklist || !db || !storage) {
         toast({ title: "Error", description: "Cannot delete document: no active checklist.", variant: "destructive" });
         return;
     }
 
-    const docToDeleteRef = doc(db, 'documents', documentId);
-    let documentData: Document;
-
-    try {
-        const docSnap = await getDoc(docToDeleteRef);
-        if (!docSnap.exists()) {
-            throw new Error("Document record not found in Firestore.");
+    if (!window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+        return;
+    }
+    
+    let docToDelete: Document | undefined = documents.find(d => d.id === documentId);
+    
+    if (!docToDelete) {
+        try {
+            const docSnap = await getDoc(doc(db, 'documents', documentId));
+            if (docSnap.exists()) {
+                docToDelete = { id: docSnap.id, ...docSnap.data() } as Document;
+            }
+        } catch (error) {
+            console.error("Error fetching document to delete:", error);
+            toast({ title: "Error", description: "Could not find document record to delete.", variant: "destructive" });
+            return;
         }
-        documentData = { id: docSnap.id, ...docSnap.data() } as Document;
-    } catch (error) {
-        console.error("Error fetching document to delete:", error);
-        toast({ title: "Error", description: "Could not find document record to delete.", variant: "destructive" });
+    }
+    
+    if (!docToDelete) {
+        toast({ title: "Error", description: "Document not found.", variant: "destructive" });
         return;
     }
 
     try {
-        const fileRef = storageRef(storage, documentData.storagePath);
+        const fileRef = storageRef(storage, docToDelete.storagePath);
         await deleteObject(fileRef);
     } catch (error: any) {
         if (error.code !== 'storage/object-not-found') {
             console.error("Error deleting file from Storage:", error);
             toast({ title: "Storage Error", description: "Could not delete file. Check storage permissions.", variant: "destructive" });
-            return;
+            return; // Stop if we can't delete the file, unless it's already gone
         }
     }
 
     try {
         const batch = writeBatch(db);
-        batch.delete(docToDeleteRef);
+        batch.delete(doc(db, 'documents', documentId));
         
         const checklistRef = doc(db, 'checklists', activeChecklist.id);
         batch.update(checklistRef, {
@@ -714,12 +724,12 @@ export default function Home() {
         });
 
         await batch.commit();
-        toast({ title: "Success", description: `Document "${documentData.fileName}" deleted.` });
+        toast({ title: "Success", description: `Document "${docToDelete.fileName}" deleted.` });
     } catch (error) {
         console.error("Error committing Firestore deletes:", error);
         toast({ title: "Database Error", description: "Failed to update database records.", variant: "destructive" });
     }
-  }, [activeChecklist, toast]);
+  }, [activeChecklist, documents, toast]);
 
   const progress = useMemo(() => {
     if (!activeChecklist || activeChecklist.tasks.length === 0) return 0;
