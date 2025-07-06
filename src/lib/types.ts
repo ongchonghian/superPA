@@ -34,4 +34,5 @@ export interface Document {
   fileName: string;
   storagePath: string; // Path to the file in Firebase Storage
   createdAt: string; // ISO string for Firestore compatibility
+  mimeType: string; // The MIME type of the file
 }

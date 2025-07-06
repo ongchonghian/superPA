@@ -10,7 +10,7 @@ import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth, app
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import { FirestoreNotConnected } from '@/components/firestore-not-connected';
 import { FirestorePermissionDenied } from '@/components/firestore-permission-denied';
-import { ref as storageRef, uploadBytes, deleteObject } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, deleteObject, getBytes } from 'firebase/storage';
 import {
   collection,
   query,
@@ -515,24 +515,44 @@ export default function Home() {
     setIsAiLoading(true);
     setIsAiDialogOpen(true);
 
+    const arrayBufferToDataUri = (buffer: ArrayBuffer, mimeType: string): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(new Blob([buffer], { type: mimeType }));
+        });
+    };
+
     try {
       const tasksToAnalyze = incompleteTasks.map(task => ({
         taskId: task.id,
         taskDescription: task.description,
         discussionHistory: task.remarks.map(r => `${r.userId}: ${r.text}`).join('\n')
       }));
-
-      const bucketNameForApi = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
-      if (!bucketNameForApi) {
-        toast({ title: "Configuration Error", description: "Firebase Storage bucket is not defined. Cannot provide context to AI.", variant: "destructive" });
-        setIsAiLoading(false);
-        return;
-      }
-
-      const contextDocuments = documents.map(doc => ({
+      
+      const contextDocumentsPromises = documents.map(async (doc) => {
+        if (!storage) return null;
+        try {
+          const fileRef = storageRef(storage, doc.storagePath);
+          const fileBytes = await getBytes(fileRef);
+          const dataUri = await arrayBufferToDataUri(fileBytes, doc.mimeType || 'application/octet-stream');
+          return {
             fileName: doc.fileName,
-            fileUri: `gs://${bucketNameForApi}/${doc.storagePath}`,
-      }));
+            fileDataUri: dataUri,
+          };
+        } catch (error) {
+          console.error(`Failed to load document ${doc.fileName} for AI context:`, error);
+          toast({
+            title: "Context file error",
+            description: `Could not load ${doc.fileName}. It might be missing from storage.`,
+            variant: "destructive",
+          })
+          return null;
+        }
+      });
+      
+      const contextDocuments = (await Promise.all(contextDocumentsPromises)).filter((d): d is { fileName: string; fileDataUri: string; } => d !== null);
 
       const result = await suggestChecklistNextSteps({ 
         tasks: tasksToAnalyze,
@@ -645,6 +665,7 @@ export default function Home() {
                 fileName: file.name,
                 storagePath: path,
                 createdAt: new Date().toISOString(),
+                mimeType: file.type || 'application/octet-stream',
             });
 
             // Associate document with checklist
@@ -910,5 +931,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
