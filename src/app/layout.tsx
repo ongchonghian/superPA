@@ -3,7 +3,7 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster"
 
 export const metadata: Metadata = {
-  title: 'Alpha Release Hub',
+  title: 'Super PA',
   description: 'A real-time, multi-user project management tool designed to facilitate task tracking, collaboration, and AI-assisted workflow automation.',
 };
 

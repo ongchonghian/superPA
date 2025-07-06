@@ -23,7 +23,7 @@ export default function Loading() {
               <path d="M2 12s.5-5 5-5 5 5 5 5" />
               <path d="M22 12s-.5 5-5 5-5-5-5-5" />
             </svg>
-            <h1 className="text-2xl font-headline font-bold text-foreground">Alpha Release Hub</h1>
+            <h1 className="text-2xl font-headline font-bold text-foreground">Super PA</h1>
         </div>
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
         <p className="text-muted-foreground">Initializing your workspace...</p>

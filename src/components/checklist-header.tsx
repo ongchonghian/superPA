@@ -81,7 +81,7 @@ export function ChecklistHeader({
                 <path d="M22 12s-.5 5-5 5-5-5-5-5" />
               </svg>
               <h1 className="text-2xl font-bold font-headline text-foreground">
-                Alpha Release Hub
+                Super PA
               </h1>
           </div>
         </div>
