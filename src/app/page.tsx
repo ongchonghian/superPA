@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -515,14 +516,15 @@ export default function Home() {
     setIsAiLoading(true);
     setIsAiDialogOpen(true);
 
-    const arrayBufferToDataUri = (buffer: ArrayBuffer, mimeType: string): Promise<string> => {
-        return new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(new Blob([buffer], { type: mimeType }));
-        });
-    };
+    const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        for (let i = 0; i < len; i++) {
+            binary += String.fromCharCode(bytes[i]);
+        }
+        return window.btoa(binary);
+    }
 
     try {
       const tasksToAnalyze = incompleteTasks.map(task => ({
@@ -542,10 +544,10 @@ export default function Home() {
             return null; // Don't include empty files
           }
           
-          // Fallback for existing documents that may have the wrong mimeType
           const safeMimeType = doc.mimeType === 'application/octet-stream' ? 'text/plain' : doc.mimeType || 'text/plain';
-          const dataUri = await arrayBufferToDataUri(fileBytes, safeMimeType);
-          
+          const base64 = arrayBufferToBase64(fileBytes);
+          const dataUri = `data:${safeMimeType};base64,${base64}`;
+
           return {
             fileName: doc.fileName,
             fileDataUri: dataUri,
@@ -737,6 +739,10 @@ export default function Home() {
     
     if (!docToDelete) {
         toast({ title: "Error", description: "Document not found.", variant: "destructive" });
+        return;
+    }
+
+    if (!window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
         return;
     }
 
@@ -943,3 +949,5 @@ export default function Home() {
     </div>
   );
 }
+
+    
