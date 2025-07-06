@@ -98,13 +98,17 @@ const RemarkDisplay = ({ text }: { text: string }) => {
     );
   }
   
-  const resultLinkRegex = /\[View results\]\(([^)]+)\)/;
-  const resultMatch = text.match(resultLinkRegex);
+  const storageLinkRegex = /\[View results\]\(storage:\/\/([^)]+)\)/;
+  const storageMatch = text.match(storageLinkRegex);
   const summaryMatch = text.match(/\*\*Summary:\*\*\n(.+)/s);
   
-  if (resultMatch) {
-    const url = resultMatch[1];
+  if (storageMatch) {
+    const path = storageMatch[1];
     const summary = summaryMatch ? summaryMatch[1].trim() : '';
+
+    const handleViewReport = () => {
+      window.dispatchEvent(new CustomEvent('view-report', { detail: path }));
+    };
 
     return (
       <div className="p-2 mt-1 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
@@ -113,10 +117,10 @@ const RemarkDisplay = ({ text }: { text: string }) => {
           <div className="flex-1">
             <h4 className="text-xs font-semibold tracking-wider uppercase text-green-700 dark:text-green-400">AI Execution Complete</h4>
             {summary && <p className="text-sm text-foreground/90 mt-1 mb-2">{summary}</p>}
-            <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary hover:underline">
+            <Button variant="link" className="p-0 h-auto text-sm font-medium text-primary hover:underline" onClick={handleViewReport}>
                 View Full Report
                 <ArrowUpRight className="inline-block ml-1 h-3 w-3" />
-            </a>
+            </Button>
           </div>
         </div>
       </div>

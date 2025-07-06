@@ -11,7 +11,7 @@ import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth, app
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import { FirestoreNotConnected } from '@/components/firestore-not-connected';
 import { FirestorePermissionDenied } from '@/components/firestore-permission-denied';
-import { ref as storageRef, uploadBytes, deleteObject, getBytes, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, deleteObject, getBytes } from 'firebase/storage';
 import {
   collection,
   query,
@@ -47,6 +47,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { ReportViewerDialog } from '@/components/report-viewer-dialog';
+
 
 export default function Home() {
   const { toast } = useToast();
@@ -77,6 +79,9 @@ export default function Home() {
   const [runningRemarkIds, setRunningRemarkIds] = useState<string[]>([]);
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
   const [checklistToDelete, setChecklistToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isReportViewerOpen, setIsReportViewerOpen] = useState(false);
+  const [reportContent, setReportContent] = useState('');
+  const [isReportLoading, setIsReportLoading] = useState(false);
 
   // If Firebase is not configured statically, show guidance.
   if (!isFirebaseConfigured) {
@@ -212,6 +217,49 @@ export default function Home() {
 
     return () => unsubscribe();
   }, [activeChecklist, toast]);
+
+  // Effect to handle viewing a report
+  useEffect(() => {
+    const handleViewReport = async (event: Event) => {
+      const customEvent = event as CustomEvent<string>;
+      const storagePath = customEvent.detail;
+      
+      if (!storage) return;
+
+      setIsReportLoading(true);
+      setIsReportViewerOpen(true);
+      setReportContent(''); // Clear previous content
+
+      try {
+        const fileRef = storageRef(storage, storagePath);
+        const fileBytes = await getBytes(fileRef);
+        const decoder = new TextDecoder('utf-8');
+        const markdownContent = decoder.decode(fileBytes);
+        setReportContent(markdownContent);
+      } catch (error: any) {
+        console.error("Error fetching report:", error);
+        let description = "Could not load the report from storage.";
+        if (error.code === 'storage/object-not-found') {
+          description = "The report file was not found in storage. It may have been deleted.";
+        } else if (error.code === 'storage/unauthorized') {
+          description = "You do not have permission to view this report. Check your Storage Security Rules.";
+        }
+        toast({
+          title: "Error Loading Report",
+          description,
+          variant: "destructive"
+        });
+        setIsReportViewerOpen(false); // Close dialog on error
+      } finally {
+        setIsReportLoading(false);
+      }
+    };
+
+    window.addEventListener('view-report', handleViewReport);
+    return () => {
+      window.removeEventListener('view-report', handleViewReport);
+    };
+  }, [storage, toast]);
 
   const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
     if (!db) return;
@@ -752,19 +800,18 @@ export default function Home() {
         const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
         
         // Use a transaction or fetch-and-update to prevent race conditions
-        await getDoc(checklistDocRef).then(async (docSnapBeforeRunning) => {
-          if (!docSnapBeforeRunning.exists()) throw new Error("Checklist not found");
-          const tasksBeforeRunning = docSnapBeforeRunning.data().tasks as Task[];
-          
-          const tasksWithRunning = tasksBeforeRunning.map(t => {
-              if (t.id !== task.id) return t;
-              return {
-                  ...t,
-                  remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: r.text.replace('[ai-todo|pending]', '[ai-todo|running]') } : r)
-              };
-          });
-          await updateDoc(checklistDocRef, { tasks: tasksWithRunning });
+        const docSnapBeforeRunning = await getDoc(checklistDocRef);
+        if (!docSnapBeforeRunning.exists()) throw new Error("Checklist not found");
+        const tasksBeforeRunning = docSnapBeforeRunning.data().tasks as Task[];
+        
+        const tasksWithRunning = tasksBeforeRunning.map(t => {
+            if (t.id !== task.id) return t;
+            return {
+                ...t,
+                remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: r.text.replace('[ai-todo|pending]', '[ai-todo|running]') } : r)
+            };
         });
+        await updateDoc(checklistDocRef, { tasks: tasksWithRunning });
 
         // Prepare and call executor flow
         const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|pending\]\s*/, '').trim();
@@ -783,10 +830,9 @@ export default function Home() {
         const resultPath = `checklists/${activeChecklist.id}/executions/${resultFileName}`;
         const resultRef = storageRef(storage, resultPath);
         await uploadBytes(resultRef, markdownBlob);
-        const downloadURL = await getDownloadURL(resultRef);
 
         // Update checklist with result
-        const resultRemarkText = `AI execution complete. [View results](${downloadURL})\n\n**Summary:**\n${result.summary}`;
+        const resultRemarkText = `AI execution complete. [View results](storage://${resultPath})\n\n**Summary:**\n${result.summary}`;
         const resultRemark: Remark = {
             id: `rem_res_${Date.now()}`,
             text: resultRemarkText,
@@ -794,23 +840,22 @@ export default function Home() {
             timestamp: new Date().toISOString()
         };
         
-        await getDoc(checklistDocRef).then(async (docSnapBeforeCompleted) => {
-          if (!docSnapBeforeCompleted.exists()) throw new Error("Checklist not found");
-          const currentTasks = docSnapBeforeCompleted.data().tasks as Task[];
+        const docSnapBeforeCompleted = await getDoc(checklistDocRef);
+        if (!docSnapBeforeCompleted.exists()) throw new Error("Checklist not found");
+        const currentTasks = docSnapBeforeCompleted.data().tasks as Task[];
 
-          const finalTasks = currentTasks.map(t => {
-              if (t.id !== task.id) return t;
-              const updatedRemarks = t.remarks.map(r => {
-                  if (r.id === remarkToExecute.id) return { ...r, text: r.text.replace('[ai-todo|running]', '[ai-todo|completed]') };
-                  return r;
-              });
-              return {
-                  ...t,
-                  remarks: [...updatedRemarks, resultRemark]
-              };
-          });
-          await updateDoc(checklistDocRef, { tasks: finalTasks });
+        const finalTasks = currentTasks.map(t => {
+            if (t.id !== task.id) return t;
+            const updatedRemarks = t.remarks.map(r => {
+                if (r.id === remarkToExecute.id) return { ...r, text: r.text.replace('[ai-todo|running]', '[ai-todo|completed]') };
+                return r;
+            });
+            return {
+                ...t,
+                remarks: [...updatedRemarks, resultRemark]
+            };
         });
+        await updateDoc(checklistDocRef, { tasks: finalTasks });
 
         executionToast.update({ id: executionToast.id, title: "Execution Complete", description: "AI has finished the task and posted the results." });
 
@@ -821,38 +866,37 @@ export default function Home() {
         // Safely revert status to failed and add an error remark
         try {
             const checklistDocRef = doc(db!, 'checklists', activeChecklist.id);
-            await getDoc(checklistDocRef).then(async (docSnap) => {
-                if (!docSnap.exists()) throw new Error("Checklist disappeared during execution failure handling.");
-        
-                const currentTasks = docSnap.data().tasks as Task[];
+            const docSnap = await getDoc(checklistDocRef);
+            if (!docSnap.exists()) throw new Error("Checklist disappeared during execution failure handling.");
+    
+            const currentTasks = docSnap.data().tasks as Task[];
+            
+            const failureReasonRemark: Remark = {
+                id: `rem_fail_${Date.now()}`,
+                text: `AI execution failed. Error: ${error.message || 'An unknown error occurred.'}`,
+                userId: 'system',
+                timestamp: new Date().toISOString()
+            };
+    
+            const finalTasks = currentTasks.map(t => {
+                if (t.id !== task.id) return t;
                 
-                const failureReasonRemark: Remark = {
-                    id: `rem_fail_${Date.now()}`,
-                    text: `AI execution failed. Error: ${error.message || 'An unknown error occurred.'}`,
-                    userId: 'system',
-                    timestamp: new Date().toISOString()
-                };
-        
-                const finalTasks = currentTasks.map(t => {
-                    if (t.id !== task.id) return t;
-                    
-                    let foundRemark = false;
-                    const updatedRemarks = t.remarks.map(r => {
-                        if (r.id === remarkToExecute.id) {
-                            foundRemark = true;
-                            // Replace whatever the status was with 'failed'
-                            return { ...r, text: r.text.replace(/\[ai-todo\|(pending|running)\]/, '[ai-todo|failed]') };
-                        }
-                        return r;
-                    });
-        
-                    if (foundRemark) {
-                        return { ...t, remarks: [...updatedRemarks, failureReasonRemark] };
+                let foundRemark = false;
+                const updatedRemarks = t.remarks.map(r => {
+                    if (r.id === remarkToExecute.id) {
+                        foundRemark = true;
+                        // Replace whatever the status was with 'failed'
+                        return { ...r, text: r.text.replace(/\[ai-todo\|(pending|running)\]/, '[ai-todo|failed]') };
                     }
-                    return t;
+                    return r;
                 });
-                await updateDoc(checklistDocRef, { tasks: finalTasks });
+    
+                if (foundRemark) {
+                    return { ...t, remarks: [...updatedRemarks, failureReasonRemark] };
+                }
+                return t;
             });
+            await updateDoc(checklistDocRef, { tasks: finalTasks });
         } catch (revertError) {
             console.error("CRITICAL: Failed to revert AI To-Do status after an execution error.", revertError);
         }
@@ -1220,6 +1264,12 @@ export default function Home() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      <ReportViewerDialog
+        open={isReportViewerOpen}
+        onOpenChange={setIsReportViewerOpen}
+        content={reportContent}
+        isLoading={isReportLoading}
+      />
     </div>
   );
 }

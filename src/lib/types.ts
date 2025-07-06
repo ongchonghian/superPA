@@ -36,3 +36,9 @@ export interface Document {
   createdAt: string; // ISO string for Firestore compatibility
   mimeType: string; // The MIME type of the file
 }
+
+declare global {
+  interface Window {
+    showOpenFilePicker: any;
+  }
+}
