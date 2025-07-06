@@ -727,7 +727,7 @@ export default function Home() {
 
       setAiAnalysisResult(result);
 
-      if (!result.suggestions?.length) {
+      if (!result.suggestions?.length && !result.informationRequests?.length) {
         toast({
             title: "No new suggestions found",
             description: "The AI couldn't find any new automatable tasks.",
@@ -830,7 +830,7 @@ export default function Home() {
 
         // Save result to storage
         const markdownBlob = new Blob([result.resultMarkdown], { type: 'text/markdown;charset=utf-8' });
-        const resultFileName = `execution_result_${remarkToExecute.id.substring(4, 10)}.md`;
+        const resultFileName = `execution_result_${remarkToExecute.id}.md`;
         const resultPath = `checklists/${activeChecklist.id}/executions/${resultFileName}`;
         const resultRef = storageRef(storage, resultPath);
         await uploadBytes(resultRef, markdownBlob);
@@ -1139,7 +1139,6 @@ export default function Home() {
           <>
             <DocumentManager 
               documents={documents}
-              onDelete={handleDeleteDocument}
               onUpload={handleUploadDocuments}
               isUploading={isUploading}
               storageCorsError={storageCorsError}
@@ -1250,3 +1249,5 @@ export default function Home() {
     </div>
   );
 }
+
+    
