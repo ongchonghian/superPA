@@ -60,7 +60,7 @@ const prompt = ai.definePrompt({
   name: 'suggestChecklistNextStepsPrompt',
   input: {schema: SuggestChecklistNextStepsInputSchema},
   output: {schema: SuggestChecklistNextStepsOutputSchema},
-  prompt: `You are an AI assistant that analyzes a list of tasks and their discussion histories to identify sub-tasks that can be automated. Your goal is to propose these automatable sub-tasks as "AI To-Dos".
+  prompt: `You are an AI assistant that analyzes a list of tasks and their discussion histories to identify sub-tasks that can be automated. Your goal is to propose these automatable sub-tasks as "AI To-Dos" in a proactive and assertive way.
 
 {{#if contextDocuments}}
 You have been provided with context documents. These documents are the primary source of truth for the project. Analyze them to understand the project's goals, scope, and technical details. Use this deep understanding to inform your suggestions and make them highly relevant and specific.
@@ -74,25 +74,30 @@ The document below is named '{{{fileName}}}'. Use it as context.
 
 Your analysis must be exhaustive. Process every single task provided in the input.
 
-For each task, you will perform a two-step analysis:
+For each task, perform the following analysis:
 
-Step 1: Context Assessment
-- Review the task's description and discussion history.
-- Determine if you have enough specific information to create a concrete, actionable AI To-Do.
-- If the information is too vague or general (e.g., "Deploy app", "Write tests"), you MUST request more information. Create a specific question that, if answered, would allow you to generate a better suggestion. Add this to the 'informationRequests' array in the output. For example, for "Deploy app", you might ask "What is the deployment environment (e.g., Staging, Production) and cloud provider?".
+1.  **Assess Task Specificity**: Review the task's description and discussion history. Can you generate a specific, concrete, automatable AI To-Do right now?
+    *   If **YES**, create a concrete AI To-Do suggestion.
+    *   If **NO**, because the task is too vague (e.g., "Deploy app", "Write tests"), proceed to the next step to be proactive.
 
-Step 2: Suggestion Generation
-- If and only if you have enough context from Step 1, identify potential automatable actions.
-- For each valid suggestion you generate, provide the following in the 'suggestions' array:
-  1.  taskId: The ID of the task this suggestion belongs to.
-  2.  suggestion: The AI To-Do formatted as a string following this exact syntax: "[ai-todo|pending] {description of the AI task}"
-  3.  context: A short explanation for *why* you are making this suggestion. If it relates to a specific remark, quote part of that remark in your explanation.
+2.  **Handle Vague Tasks (Be Proactive!)**: When a task lacks detail, your primary goal is to **propose a research task** to gather the necessary information.
+    *   **First, try to create an assertive, research-based AI To-Do suggestion.** Frame it as you offering to help. For example, for a vague task like "Deploy app," instead of just asking a question, you should suggest an AI To-Do like: \`[ai-todo|pending] Research and outline deployment options, including recommended cloud providers and environment configurations (Staging, Production).\` Add this to the \`suggestions\` array.
+    *   **Only as a last resort**, if the task is so ambiguous that you cannot even formulate a meaningful research task, should you fall back to asking a clarifying question. In this rare case, add a question to the \`informationRequests\` array.
 
-Important Rules:
+3.  **Output Format**:
+    *   For each **suggestion** (whether concrete or research-based), provide:
+        1.  \`taskId\`: The ID of the task this suggestion belongs to.
+        2.  \`suggestion\`: The AI To-Do formatted as \`[ai-todo|pending] {description of the AI task}\`.
+        3.  \`context\`: A brief explanation for why you are making this suggestion.
+    *   For each **information request** (used only as a fallback), provide:
+        1.  \`taskId\`: The ID of the task.
+        2.  \`request\`: A clear, specific question for the user.
+
+**Important Rules:**
 - You MUST process every task. Do not stop after a few.
-- If a task is vague, prioritize asking for more information over creating a superficial suggestion.
+- **Prioritize generating actionable suggestions (including research tasks) over asking questions.** Use \`informationRequests\` sparingly.
 - Do not suggest AI To-Dos that are functionally identical to ones already present in that task's discussion history.
-- If you generate both suggestions and information requests, include both in the output. If you find nothing, return empty arrays for both.
+- If you find nothing to suggest or ask, return empty arrays for both \`suggestions\` and \`informationRequests\`.
 
 Here is the list of tasks to analyze:
 {{#each tasks}}
