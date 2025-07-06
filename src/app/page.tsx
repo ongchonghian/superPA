@@ -516,15 +516,20 @@ export default function Home() {
     setIsAiLoading(true);
     setIsAiDialogOpen(true);
 
-    const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
-        let binary = '';
-        const bytes = new Uint8Array(buffer);
-        const len = bytes.byteLength;
-        for (let i = 0; i < len; i++) {
-            binary += String.fromCharCode(bytes[i]);
-        }
-        return window.btoa(binary);
-    }
+    const fileToDataUri = (file: Blob): Promise<string> => {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (typeof reader.result === 'string') {
+            resolve(reader.result);
+          } else {
+            reject(new Error('Failed to read file as data URI.'));
+          }
+        };
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+      });
+    };
 
     try {
       const tasksToAnalyze = incompleteTasks.map(task => ({
@@ -541,13 +546,13 @@ export default function Home() {
 
           if (fileBytes.byteLength === 0) {
             console.warn(`Skipping empty document for AI context: ${doc.fileName}`);
-            return null; // Don't include empty files
+            return null;
           }
           
           const safeMimeType = doc.mimeType === 'application/octet-stream' ? 'text/plain' : doc.mimeType || 'text/plain';
-          const base64 = arrayBufferToBase64(fileBytes);
-          const dataUri = `data:${safeMimeType};base64,${base64}`;
-
+          const blob = new Blob([fileBytes], { type: safeMimeType });
+          const dataUri = await fileToDataUri(blob);
+          
           return {
             fileName: doc.fileName,
             fileDataUri: dataUri,
@@ -949,5 +954,7 @@ export default function Home() {
     </div>
   );
 }
+
+    
 
     
