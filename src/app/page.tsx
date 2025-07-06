@@ -77,7 +77,6 @@ export default function Home() {
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [runningRemarkIds, setRunningRemarkIds] = useState<string[]>([]);
-  const [docToDelete, setDocToDelete] = useState<Document | null>(null);
   const [checklistToDelete, setChecklistToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isReportViewerOpen, setIsReportViewerOpen] = useState(false);
   const [reportContent, setReportContent] = useState('');
@@ -323,22 +322,27 @@ export default function Home() {
 
         const batch = writeBatch(db);
 
+        // Delete all associated documents from Storage and their Firestore records
         if (documentIds.length > 0) {
             const docPromises = documentIds.map(async (docId) => {
                 const docRef = doc(db, 'documents', docId);
                 const docSnap = await getDoc(docRef);
                 if (docSnap.exists()) {
                     const docData = docSnap.data() as Document;
+                    // Delete file from Storage
                     const fileRef = storageRef(storage, docData.storagePath);
                     await deleteObject(fileRef).catch(err => {
+                        // Ignore if file is already deleted, but throw other errors
                         if (err.code !== 'storage/object-not-found') throw err;
                     });
+                    // Delete Firestore document record in the batch
                     batch.delete(docRef);
                 }
             });
             await Promise.all(docPromises);
         }
 
+        // Delete the checklist itself
         batch.delete(checklistRef);
         await batch.commit();
 
@@ -347,7 +351,7 @@ export default function Home() {
         console.error("Error deleting checklist:", error);
         deleteToast.update({ id: deleteToast.id, title: "Error", description: error.message || "Failed to delete checklist.", variant: "destructive" });
     } finally {
-        setChecklistToDelete(null);
+        setChecklistToDelete(null); // Close the dialog
     }
   }, [db, storage, toast]);
   
@@ -1135,7 +1139,7 @@ export default function Home() {
           <>
             <DocumentManager 
               documents={documents}
-              onDeleteRequest={setDocToDelete}
+              onDelete={handleDeleteDocument}
               onUpload={handleUploadDocuments}
               isUploading={isUploading}
               storageCorsError={storageCorsError}
@@ -1210,33 +1214,6 @@ export default function Home() {
         assignees={assignees}
         userId={userId || undefined}
       />
-      <AlertDialog
-        open={!!docToDelete}
-        onOpenChange={(isOpen) => !isOpen && setDocToDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action will permanently delete the document &quot;{docToDelete?.fileName}&quot;. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
-              onClick={() => {
-                if (docToDelete) {
-                  handleDeleteDocument(docToDelete.id);
-                  setDocToDelete(null);
-                }
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       <AlertDialog
         open={!!checklistToDelete}
         onOpenChange={(isOpen) => !isOpen && setChecklistToDelete(null)}

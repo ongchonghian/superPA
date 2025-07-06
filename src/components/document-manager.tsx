@@ -33,7 +33,7 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading, st
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
 
   const handleUploadClick = async () => {
-    if (fileInputRef.current?.files) {
+    if (fileInputRef.current?.files && fileInputRef.current.files.length > 0) {
       await onUpload(fileInputRef.current.files);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -138,13 +138,13 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading, st
           <AlertDialogHeader>
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action will permanently delete the document "{docToDelete?.fileName}". This action cannot be undone.
+              This action will permanently delete the document &quot;{docToDelete?.fileName}&quot;. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setDocToDelete(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive hover:bg-destructive/90"
               onClick={() => {
                 if (docToDelete) {
                   onDelete(docToDelete.id);
