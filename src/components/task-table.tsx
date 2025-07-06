@@ -33,8 +33,11 @@ import {
   Plus,
   Trash2,
   WandSparkles,
+  CheckCircle2,
+  ArrowUpRight,
+  Loader2,
 } from 'lucide-react';
-import type { Checklist, Task, TaskPriority, TaskStatus } from '@/lib/types';
+import type { Checklist, Task, TaskPriority, TaskStatus, Remark } from '@/lib/types';
 import { format, parseISO, formatDistanceToNow, isSameDay } from 'date-fns';
 import {PRIORITIES, STATUSES} from '@/lib/data';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -45,6 +48,8 @@ type SortKey = keyof Task | '';
 interface TaskTableProps {
   checklist: Checklist;
   onUpdate: (checklist: Partial<Checklist> & { id: string }) => void;
+  onExecuteAiTodo: (task: Task, remark: Remark) => void;
+  runningRemarkIds: string[];
 }
 
 const statusColors: { [key in TaskStatus]: string } = {
@@ -92,11 +97,36 @@ const RemarkDisplay = ({ text }: { text: string }) => {
       </div>
     );
   }
+  
+  const resultLinkRegex = /\[View results\]\(([^)]+)\)/;
+  const resultMatch = text.match(resultLinkRegex);
+  const summaryMatch = text.match(/\*\*Summary:\*\*\n(.+)/s);
+  
+  if (resultMatch) {
+    const url = resultMatch[1];
+    const summary = summaryMatch ? summaryMatch[1].trim() : '';
+
+    return (
+      <div className="p-2 mt-1 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
+        <div className="flex items-start gap-2.5">
+          <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-600 dark:text-green-400 flex-shrink-0" />
+          <div className="flex-1">
+            <h4 className="text-xs font-semibold tracking-wider uppercase text-green-700 dark:text-green-400">AI Execution Complete</h4>
+            {summary && <p className="text-sm text-foreground/90 mt-1 mb-2">{summary}</p>}
+            <a href={url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-primary hover:underline">
+                View Full Report
+                <ArrowUpRight className="inline-block ml-1 h-3 w-3" />
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return <p className="text-sm text-foreground/90 whitespace-pre-wrap">{text}</p>;
 };
 
-export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
+export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkIds }: TaskTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [filters, setFilters] = useState({
@@ -142,19 +172,6 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
       onUpdate({ ...checklist, tasks: newTasks });
   };
   
-  const handleSaveTask = (taskToSave: Omit<Task, 'remarks'>) => {
-      const exists = checklist.tasks.some(t => t.id === taskToSave.id);
-      if (exists) {
-        const existingTask = checklist.tasks.find(t => t.id === taskToSave.id)!;
-        const updatedTask = { ...existingTask, ...taskToSave };
-        handleUpdateTask(updatedTask);
-      } else {
-        const newTask = {...taskToSave, remarks: []};
-        const newTasks = [...checklist.tasks, newTask];
-        onUpdate({ ...checklist, tasks: newTasks });
-      }
-  };
-
   const handleDeleteTask = (taskId: string) => {
     if (window.confirm('Are you sure you want to delete this task?')) {
         const newTasks = checklist.tasks.filter(t => t.id !== taskId);
@@ -171,7 +188,6 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
     const systemRemarkTextIncomplete = "Marked as incomplete.";
 
     if (isComplete) {
-      // Task is being marked as complete
       updatedRemarks.push({
         id: `rem_${Date.now()}_${Math.random()}`,
         text: systemRemarkText,
@@ -179,7 +195,6 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         timestamp: new Date().toISOString(),
       });
     } else {
-      // Task is being marked as incomplete
       const completionRemarkIndex = updatedRemarks.findIndex(
         (r) => r.text === systemRemarkText && r.userId === 'system'
       );
@@ -189,10 +204,8 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
         const remarkDate = parseISO(completionRemark.timestamp);
         
         if (isSameDay(remarkDate, new Date())) {
-          // If unchecked on the same day, remove the "Marked as completed." remark.
           updatedRemarks.splice(completionRemarkIndex, 1);
         } else {
-          // If unchecked on a different day, add "Marked as incomplete."
           updatedRemarks.push({
             id: `rem_${Date.now()}_${Math.random()}`,
             text: systemRemarkTextIncomplete,
@@ -201,7 +214,6 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
           });
         }
       } else {
-         // This case handles if it was somehow marked complete without the system remark.
          updatedRemarks.push({
             id: `rem_${Date.now()}_${Math.random()}`,
             text: systemRemarkTextIncomplete,
@@ -285,8 +297,6 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
             {filteredAndSortedTasks.length > 0 ? (
               filteredAndSortedTasks.map(task => {
                 const sortedRemarks = [...task.remarks].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-                const aiTodos = sortedRemarks.filter(r => r.text.startsWith('[ai-todo|'));
-                const regularRemarks = sortedRemarks.filter(r => !r.text.startsWith('[ai-todo|'));
                 
                 return (
                   <TableRow key={task.id} data-state={task.status === 'complete' ? 'completed' : 'pending'}>
@@ -302,43 +312,35 @@ export function TaskTable({ checklist, onUpdate }: TaskTableProps) {
                       <div className={task.status === 'complete' ? 'line-through' : ''}>{task.description}</div>
                       
                       <div className="mt-4 space-y-3">
-                        {aiTodos.map(remark => (
-                          <div key={remark.id} className="flex items-start gap-2.5">
-                            <Avatar className="h-6 w-6 border text-xs">
-                                <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <div className="grid gap-0.5 flex-1">
-                                <div className="flex items-center gap-2">
-                                    <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
-                                    </p>
-                                </div>
-                                <RemarkDisplay text={remark.text} />
-                            </div>
-                          </div>
-                        ))}
+                        {sortedRemarks.map(remark => {
+                          const isRunning = runningRemarkIds.includes(remark.id);
+                          const isPending = remark.text.startsWith('[ai-todo|pending]');
 
-                        {aiTodos.length > 0 && regularRemarks.length > 0 && (
-                          <div className="py-2"><hr className="border-dashed" /></div>
-                        )}
-
-                        {regularRemarks.map(remark => (
-                          <div key={remark.id} className="flex items-start gap-2.5">
-                            <Avatar className="h-6 w-6 border text-xs">
-                                <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
-                            </Avatar>
-                            <div className="grid gap-0.5 flex-1">
-                                <div className="flex items-center gap-2">
-                                    <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
-                                    </p>
-                                </div>
-                                <RemarkDisplay text={remark.text} />
+                          return (
+                            <div key={remark.id} className="flex items-start gap-2.5">
+                              <Avatar className="h-6 w-6 border text-xs">
+                                  <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
+                              </Avatar>
+                              <div className="grid gap-0.5 flex-1">
+                                  <div className="flex items-center gap-2">
+                                      <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
+                                      <p className="text-xs text-muted-foreground">
+                                          {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
+                                      </p>
+                                  </div>
+                                  <RemarkDisplay text={remark.text} />
+                                  {isPending && (
+                                    <div className="mt-2">
+                                        <Button size="sm" variant="outline" onClick={() => onExecuteAiTodo(task, remark)} disabled={isRunning}>
+                                            {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
+                                            {isRunning ? 'Running...' : 'Run this To-Do'}
+                                        </Button>
+                                    </div>
+                                  )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          )
+                        })}
                       </div>
 
                     </TableCell>

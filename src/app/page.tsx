@@ -11,7 +11,7 @@ import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth, app
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import { FirestoreNotConnected } from '@/components/firestore-not-connected';
 import { FirestorePermissionDenied } from '@/components/firestore-permission-denied';
-import { ref as storageRef, uploadBytes, deleteObject, getBytes } from 'firebase/storage';
+import { ref as storageRef, uploadBytes, deleteObject, getBytes, getDownloadURL } from 'firebase/storage';
 import {
   collection,
   query,
@@ -31,8 +31,9 @@ import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
 import { ChecklistAiSuggestionDialog } from '@/components/checklist-ai-suggestion-dialog';
-import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion, InformationRequest } from '@/ai/flows/suggest-checklist-next-steps';
+import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion } from '@/ai/flows/suggest-checklist-next-steps';
 import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
+import { executeAiTodo } from '@/ai/flows/execute-ai-todo';
 import { TaskDialog } from '@/components/task-dialog';
 import { TaskRemarksSheet } from '@/components/task-remarks-sheet';
 import { DocumentManager } from '@/components/document-manager';
@@ -63,6 +64,7 @@ export default function Home() {
   const [isRemarksSheetOpen, setIsRemarksSheetOpen] = useState(false);
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
+  const [runningRemarkIds, setRunningRemarkIds] = useState<string[]>([]);
 
   // If Firebase is not configured statically, show guidance.
   if (!isFirebaseConfigured) {
@@ -500,6 +502,57 @@ export default function Home() {
     setTimeout(() => window.print(), 500);
   };
   
+  const fileToDataUri = useCallback((file: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (typeof reader.result === 'string') {
+          resolve(reader.result);
+        } else {
+          reject(new Error('Failed to read file as data URI.'));
+        }
+      };
+      reader.onerror = error => reject(error);
+      reader.readAsDataURL(file);
+    });
+  }, []);
+
+  const getContextDocumentsForAi = useCallback(async (): Promise<{ fileName: string; fileDataUri: string; }[]> => {
+    if (!storage) return [];
+
+    const documentPromises = documents.map(async (doc) => {
+      try {
+        const fileRef = storageRef(storage, doc.storagePath);
+        const fileBytes = await getBytes(fileRef);
+
+        if (fileBytes.byteLength === 0) {
+          console.warn(`Skipping empty document for AI context: ${doc.fileName}`);
+          return null;
+        }
+        
+        const safeMimeType = doc.mimeType === 'application/octet-stream' ? 'text/plain' : doc.mimeType || 'text/plain';
+        const blob = new Blob([fileBytes], { type: safeMimeType });
+        const dataUri = await fileToDataUri(blob);
+        
+        return {
+          fileName: doc.fileName,
+          fileDataUri: dataUri,
+        };
+      } catch (error) {
+        console.error(`Failed to load document ${doc.fileName} for AI context:`, error);
+        toast({
+          title: "Context file error",
+          description: `Could not load ${doc.fileName}. It might be missing from storage.`,
+          variant: "destructive",
+        })
+        return null;
+      }
+    });
+
+    const settledDocuments = await Promise.all(documentPromises);
+    return settledDocuments.filter((d): d is { fileName: string; fileDataUri: string; } => d !== null);
+  }, [documents, storage, fileToDataUri, toast]);
+  
   const fetchAiSuggestions = useCallback(async () => {
     if (!activeChecklist) return;
     
@@ -516,59 +569,14 @@ export default function Home() {
     setIsAiLoading(true);
     setIsAiDialogOpen(true);
 
-    const fileToDataUri = (file: Blob): Promise<string> => {
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          if (typeof reader.result === 'string') {
-            resolve(reader.result);
-          } else {
-            reject(new Error('Failed to read file as data URI.'));
-          }
-        };
-        reader.onerror = error => reject(error);
-        reader.readAsDataURL(file);
-      });
-    };
-
     try {
       const tasksToAnalyze = incompleteTasks.map(task => ({
         taskId: task.id,
         taskDescription: task.description,
-        discussionHistory: task.remarks.map(r => r.text).join('\n')
+        discussionHistory: task.remarks.map(r => r.text).join('\n---\n')
       }));
       
-      const contextDocumentsPromises = documents.map(async (doc) => {
-        if (!storage) return null;
-        try {
-          const fileRef = storageRef(storage, doc.storagePath);
-          const fileBytes = await getBytes(fileRef);
-
-          if (fileBytes.byteLength === 0) {
-            console.warn(`Skipping empty document for AI context: ${doc.fileName}`);
-            return null;
-          }
-          
-          const safeMimeType = doc.mimeType === 'application/octet-stream' ? 'text/plain' : doc.mimeType || 'text/plain';
-          const blob = new Blob([fileBytes], { type: safeMimeType });
-          const dataUri = await fileToDataUri(blob);
-          
-          return {
-            fileName: doc.fileName,
-            fileDataUri: dataUri,
-          };
-        } catch (error) {
-          console.error(`Failed to load document ${doc.fileName} for AI context:`, error);
-          toast({
-            title: "Context file error",
-            description: `Could not load ${doc.fileName}. It might be missing from storage.`,
-            variant: "destructive",
-          })
-          return null;
-        }
-      });
-      
-      const contextDocuments = (await Promise.all(contextDocumentsPromises)).filter((d): d is { fileName: string; fileDataUri: string; } => d !== null);
+      const contextDocuments = await getContextDocumentsForAi();
 
       const result = await suggestChecklistNextSteps({ 
         tasks: tasksToAnalyze,
@@ -577,10 +585,10 @@ export default function Home() {
 
       setAiAnalysisResult(result);
 
-      if (!result.suggestions?.length && !result.informationRequests?.length) {
+      if (!result.suggestions?.length) {
         toast({
             title: "No new suggestions found",
-            description: "The AI couldn't find any new automatable tasks or opportunities to ask for more information.",
+            description: "The AI couldn't find any new automatable tasks.",
         });
       }
     } catch (error) {
@@ -594,7 +602,7 @@ export default function Home() {
     } finally {
       setIsAiLoading(false);
     }
-  }, [activeChecklist, documents, toast]);
+  }, [activeChecklist, getContextDocumentsForAi, toast]);
 
   const handleAddSuggestionAsRemark = useCallback((suggestionToAdd: ChecklistSuggestion) => {
     if (!activeChecklist) return;
@@ -643,6 +651,94 @@ export default function Home() {
       setIsRemarksSheetOpen(true); // Open the remarks sheet
     }
   }, [activeChecklist]);
+
+  const handleExecuteAiTodo = useCallback(async (task: Task, remarkToExecute: Remark) => {
+    if (!activeChecklist || !db || !storage) return;
+
+    setRunningRemarkIds(prev => [...prev, remarkToExecute.id]);
+    const executionToast = toast({ title: "AI Execution Started", description: "The AI is now working on your to-do." });
+
+    let runningRemarkText = '';
+
+    try {
+        // 1. Mark as running
+        runningRemarkText = remarkToExecute.text.replace('[ai-todo|pending]', '[ai-todo|running]');
+        const tasksWithRunning = activeChecklist.tasks.map(t => {
+            if (t.id !== task.id) return t;
+            return {
+                ...t,
+                remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: runningRemarkText } : r)
+            };
+        });
+        await handleUpdateChecklist({ ...activeChecklist, tasks: tasksWithRunning });
+
+        // 2. Prepare AI input
+        const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|pending\]\s*/, '').trim();
+        const contextDocuments = await getContextDocumentsForAi();
+        
+        // 3. Call executor flow
+        const result = await executeAiTodo({
+            aiTodoText,
+            taskDescription: task.description,
+            discussionHistory: task.remarks.map(r => r.text).join('\n---\n'),
+            contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
+        });
+
+        // 4. Handle result
+        // 4a. Save to storage
+        const markdownBlob = new Blob([result.resultMarkdown], { type: 'text/markdown;charset=utf-8' });
+        const resultFileName = `execution_result_${remarkToExecute.id.substring(4, 10)}.md`;
+        const resultPath = `checklists/${activeChecklist.id}/executions/${resultFileName}`;
+        const resultRef = storageRef(storage, resultPath);
+        await uploadBytes(resultRef, markdownBlob);
+        const downloadURL = await getDownloadURL(resultRef);
+
+        // 4b. Create result remark
+        const resultRemarkText = `AI execution complete. [View results](${downloadURL})\n\n**Summary:**\n${result.summary}`;
+        const resultRemark: Remark = {
+            id: `rem_res_${Date.now()}`,
+            text: resultRemarkText,
+            userId: 'ai_executor',
+            timestamp: new Date().toISOString()
+        };
+        
+        // 4c. Update original to-do and add result
+        const completedRemarkText = runningRemarkText.replace('[ai-todo|running]', '[ai-todo|completed]');
+        
+        const currentChecklistState = (await getDoc(doc(db, 'checklists', activeChecklist.id))).data() as Omit<Checklist, 'id'>;
+
+        const finalTasks = currentChecklistState.tasks.map(t => {
+            if (t.id !== task.id) return t;
+            const updatedRemarks = t.remarks.map(r => {
+                if (r.id === remarkToExecute.id) return { ...r, text: completedRemarkText };
+                return r;
+            });
+            return {
+                ...t,
+                remarks: [...updatedRemarks, resultRemark]
+            };
+        });
+
+        await handleUpdateChecklist({ ...activeChecklist, tasks: finalTasks });
+        executionToast.update({ id: executionToast.id, title: "Execution Complete", description: "AI has finished the task and posted the results." });
+
+    } catch (error: any) {
+        console.error("AI execution failed:", error);
+        executionToast.update({ id: executionToast.id, title: "Execution Failed", description: "The AI could not complete the task. Please try again.", variant: "destructive" });
+        
+        // Revert status to pending
+        const revertedTasks = activeChecklist.tasks.map(t => {
+            if (t.id !== task.id) return t;
+            return {
+                ...t,
+                remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: remarkToExecute.text } : r)
+            };
+        });
+        await handleUpdateChecklist({ ...activeChecklist, tasks: revertedTasks });
+    } finally {
+        setRunningRemarkIds(prev => prev.filter(id => id !== remarkToExecute.id));
+    }
+  }, [activeChecklist, getContextDocumentsForAi, handleUpdateChecklist, toast]);
 
   const handleUploadDocuments = useCallback(async (files: FileList) => {
     if (!activeChecklist || !db || !storage || !auth) {
@@ -882,6 +978,8 @@ export default function Home() {
             <TaskTable
               checklist={activeChecklist}
               onUpdate={handleUpdateChecklist}
+              onExecuteAiTodo={handleExecuteAiTodo}
+              runningRemarkIds={runningRemarkIds}
             />
           </>
         ) : (
@@ -898,7 +996,7 @@ export default function Home() {
         )}
       </main>
       <div className="print-only hidden">
-        {activeChecklist && <TaskTable checklist={activeChecklist} onUpdate={() => {}} />}
+        {activeChecklist && <TaskTable checklist={activeChecklist} onUpdate={() => {}} onExecuteAiTodo={() => {}} runningRemarkIds={[]} />}
       </div>
       <NewChecklistDialog
         open={isNewChecklistDialogOpen}
@@ -926,7 +1024,6 @@ export default function Home() {
         open={isAiDialogOpen}
         onOpenChange={setIsAiDialogOpen}
         suggestions={aiAnalysisResult?.suggestions || []}
-        informationRequests={aiAnalysisResult?.informationRequests || []}
         isLoading={isAiLoading}
         tasks={activeChecklist?.tasks || []}
         onAddSuggestion={handleAddSuggestionAsRemark}
