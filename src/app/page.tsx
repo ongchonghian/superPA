@@ -747,10 +747,6 @@ export default function Home() {
         return;
     }
 
-    if (!window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
-        return;
-    }
-
     try {
         const fileRef = storageRef(storage, docToDelete.storagePath);
         await deleteObject(fileRef).catch(error => {
@@ -954,7 +950,3 @@ export default function Home() {
     </div>
   );
 }
-
-    
-
-    
