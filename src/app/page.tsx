@@ -6,7 +6,7 @@ import { TaskTable } from '@/components/task-table';
 import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
-import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth } from '@/lib/firebase';
+import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth, app } from '@/lib/firebase';
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import { FirestoreNotConnected } from '@/components/firestore-not-connected';
 import { FirestorePermissionDenied } from '@/components/firestore-permission-denied';
@@ -522,8 +522,14 @@ export default function Home() {
         discussionHistory: task.remarks.map(r => `${r.userId}: ${r.text}`).join('\n')
       }));
 
-      const projectId = process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
-      const bucketNameForApi = projectId ? `${projectId}.appspot.com` : process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
+      const projectId = app?.options.projectId;
+      if (!projectId) {
+        toast({ title: "Error", description: "Firebase project ID not found in configuration.", variant: "destructive" });
+        setIsAiLoading(false);
+        return;
+      }
+
+      const bucketNameForApi = `${projectId}.appspot.com`;
 
       const contextDocuments = documents.map(doc => ({
             fileName: doc.fileName,
