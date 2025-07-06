@@ -672,10 +672,6 @@ export default function Home() {
   }, [activeChecklist, toast]);
 
   const handleDeleteDocument = useCallback(async (documentId: string) => {
-    if (!window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
-        return;
-    }
-      
     if (!activeChecklist || !db || !storage) {
         toast({ title: "Error", description: "Cannot delete document: no active checklist.", variant: "destructive" });
         return;
