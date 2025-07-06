@@ -66,8 +66,8 @@ You have been provided with context documents. These documents are the primary s
 
 --- CONTEXT DOCUMENTS START ---
 {{#each contextDocuments}}
-## Document: {{{fileName}}}
 {{{media url=fileDataUri}}}
+The document above is named '{{{fileName}}}'. Use it as context.
 {{/each}}
 --- CONTEXT DOCUMENTS END ---
 {{/if}}
