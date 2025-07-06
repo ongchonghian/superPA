@@ -65,6 +65,7 @@ export default function Home() {
   const [dialogTask, setDialogTask] = useState<Partial<Task> | null>(null);
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [runningRemarkIds, setRunningRemarkIds] = useState<string[]>([]);
+  const [docToDelete, setDocToDelete] = useState<Document | null>(null);
 
   // If Firebase is not configured statically, show guidance.
   if (!isFirebaseConfigured) {
@@ -626,7 +627,7 @@ export default function Home() {
       t.id === updatedTask.id ? updatedTask : t
     );
     
-    handleUpdateChecklist({ ...activeChecklist, tasks: updatedTasks });
+    handleUpdateChecklist({ id: activeChecklist.id, tasks: updatedTasks });
 
     setAiAnalysisResult(currentResult => {
       if (!currentResult) return null;
@@ -658,19 +659,23 @@ export default function Home() {
     setRunningRemarkIds(prev => [...prev, remarkToExecute.id]);
     const executionToast = toast({ title: "AI Execution Started", description: "The AI is now working on your to-do." });
 
-    let runningRemarkText = '';
+    const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
 
     try {
-        // 1. Mark as running
-        runningRemarkText = remarkToExecute.text.replace('[ai-todo|pending]', '[ai-todo|running]');
-        const tasksWithRunning = activeChecklist.tasks.map(t => {
+        // 1. Mark as running (safely)
+        const runningRemarkText = remarkToExecute.text.replace('[ai-todo|pending]', '[ai-todo|running]');
+        const docSnapBeforeRunning = await getDoc(checklistDocRef);
+        if (!docSnapBeforeRunning.exists()) throw new Error("Checklist not found");
+        const tasksBeforeRunning = docSnapBeforeRunning.data().tasks as Task[];
+        
+        const tasksWithRunning = tasksBeforeRunning.map(t => {
             if (t.id !== task.id) return t;
             return {
                 ...t,
                 remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: runningRemarkText } : r)
             };
         });
-        await handleUpdateChecklist({ ...activeChecklist, tasks: tasksWithRunning });
+        await handleUpdateChecklist({ id: activeChecklist.id, tasks: tasksWithRunning });
 
         // 2. Prepare AI input
         const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|pending\]\s*/, '').trim();
@@ -705,9 +710,11 @@ export default function Home() {
         // 4c. Update original to-do and add result
         const completedRemarkText = runningRemarkText.replace('[ai-todo|running]', '[ai-todo|completed]');
         
-        const currentChecklistState = (await getDoc(doc(db, 'checklists', activeChecklist.id))).data() as Omit<Checklist, 'id'>;
+        const docSnapBeforeCompleted = await getDoc(checklistDocRef);
+        if (!docSnapBeforeCompleted.exists()) throw new Error("Checklist not found");
+        const currentTasks = docSnapBeforeCompleted.data().tasks as Task[];
 
-        const finalTasks = currentChecklistState.tasks.map(t => {
+        const finalTasks = currentTasks.map(t => {
             if (t.id !== task.id) return t;
             const updatedRemarks = t.remarks.map(r => {
                 if (r.id === remarkToExecute.id) return { ...r, text: completedRemarkText };
@@ -719,26 +726,30 @@ export default function Home() {
             };
         });
 
-        await handleUpdateChecklist({ ...activeChecklist, tasks: finalTasks });
+        await handleUpdateChecklist({ id: activeChecklist.id, tasks: finalTasks });
         executionToast.update({ id: executionToast.id, title: "Execution Complete", description: "AI has finished the task and posted the results." });
 
     } catch (error: any) {
         console.error("AI execution failed:", error);
         executionToast.update({ id: executionToast.id, title: "Execution Failed", description: "The AI could not complete the task. Please try again.", variant: "destructive" });
         
-        // Revert status to pending
-        const revertedTasks = activeChecklist.tasks.map(t => {
-            if (t.id !== task.id) return t;
-            return {
-                ...t,
-                remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: remarkToExecute.text } : r)
-            };
-        });
-        await handleUpdateChecklist({ ...activeChecklist, tasks: revertedTasks });
+        // Revert status to pending, safely
+        const docSnap = await getDoc(checklistDocRef);
+        if (docSnap.exists()) {
+            const tasksOnFailure = docSnap.data().tasks as Task[];
+            const revertedTasks = tasksOnFailure.map(t => {
+                if (t.id !== task.id) return t;
+                return {
+                    ...t,
+                    remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: remarkToExecute.text } : r)
+                };
+            });
+            await handleUpdateChecklist({ id: activeChecklist.id, tasks: revertedTasks });
+        }
     } finally {
         setRunningRemarkIds(prev => prev.filter(id => id !== remarkToExecute.id));
     }
-  }, [activeChecklist, getContextDocumentsForAi, handleUpdateChecklist, toast]);
+  }, [activeChecklist, db, storage, getContextDocumentsForAi, handleUpdateChecklist, toast]);
 
   const handleUploadDocuments = useCallback(async (files: FileList) => {
     if (!activeChecklist || !db || !storage || !auth) {
@@ -817,7 +828,7 @@ export default function Home() {
     } finally {
         setIsUploading(false);
     }
-  }, [activeChecklist, toast]);
+  }, [activeChecklist, toast, db, storage, auth]);
 
   const handleDeleteDocument = useCallback(async (documentId: string) => {
     if (!activeChecklist || !db || !storage) {
@@ -871,7 +882,7 @@ export default function Home() {
         console.error("Error committing Firestore deletes:", error);
         toast({ title: "Database Error", description: "Failed to update database records.", variant: "destructive" });
     }
-  }, [activeChecklist, toast]);
+  }, [activeChecklist, toast, db, storage]);
 
   const progress = useMemo(() => {
     if (!activeChecklist || activeChecklist.tasks.length === 0) return 0;
@@ -909,7 +920,7 @@ export default function Home() {
   const handleUpdateTask = useCallback((taskToUpdate: Task) => {
     if (!activeChecklist) return;
     const newTasks = activeChecklist.tasks.map(t => (t.id === taskToUpdate.id ? taskToUpdate : t));
-    handleUpdateChecklist({ ...activeChecklist, tasks: newTasks });
+    handleUpdateChecklist({ id: activeChecklist.id, tasks: newTasks });
   }, [activeChecklist, handleUpdateChecklist]);
 
   const handleSaveTask = useCallback((taskToSave: Omit<Task, 'remarks'>) => {
@@ -922,7 +933,7 @@ export default function Home() {
       } else {
         const newTask = {...taskToSave, remarks: []};
         const newTasks = [...activeChecklist.tasks, newTask];
-        handleUpdateChecklist({ ...activeChecklist, tasks: newTasks });
+        handleUpdateChecklist({ id: activeChecklist.id, tasks: newTasks });
       }
   },[activeChecklist, handleUpdateChecklist]);
 
@@ -970,7 +981,7 @@ export default function Home() {
           <>
             <DocumentManager 
               documents={documents}
-              onDelete={handleDeleteDocument}
+              onDeleteRequest={setDocToDelete}
               onUpload={handleUploadDocuments}
               isUploading={isUploading}
               storageCorsError={storageCorsError}
@@ -1044,6 +1055,34 @@ export default function Home() {
         assignees={assignees}
         userId={userId || undefined}
       />
+      <AlertDialog
+        open={!!docToDelete}
+        onOpenChange={(isOpen) => !isOpen && setDocToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action will permanently delete the document &quot;{docToDelete?.fileName}&quot;. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive hover:bg-destructive/90"
+              onClick={() => {
+                if (docToDelete) {
+                  handleDeleteDocument(docToDelete.id);
+                  setDocToDelete(null);
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
+
