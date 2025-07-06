@@ -32,6 +32,7 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading, st
 
   const handleDeleteClick = (documentId: string) => {
     if (window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+ console.log('Attempting to delete document with ID:', documentId);
       onDelete(documentId);
     }
   };

@@ -672,6 +672,7 @@ export default function Home() {
   }, [activeChecklist, toast]);
 
   const handleDeleteDocument = useCallback(async (documentId: string) => {
+ console.log('handleDeleteDocument called', documentId);
     if (!activeChecklist || !db || !storage) {
         toast({ title: "Error", description: "Cannot delete document: no active checklist.", variant: "destructive" });
         return;
