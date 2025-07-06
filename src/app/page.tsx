@@ -672,6 +672,10 @@ export default function Home() {
   }, [activeChecklist, toast]);
 
   const handleDeleteDocument = useCallback(async (documentId: string) => {
+    if (!window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+        return;
+    }
+      
     if (!activeChecklist || !db || !storage) {
         toast({ title: "Error", description: "Cannot delete document: no active checklist.", variant: "destructive" });
         return;
@@ -680,7 +684,6 @@ export default function Home() {
     const docToDeleteRef = doc(db, 'documents', documentId);
     let documentData: Document;
 
-    // 1. Get the document from Firestore to find the storage path
     try {
         const docSnap = await getDoc(docToDeleteRef);
         if (!docSnap.exists()) {
@@ -689,34 +692,21 @@ export default function Home() {
         documentData = { id: docSnap.id, ...docSnap.data() } as Document;
     } catch (error) {
         console.error("Error fetching document to delete:", error);
-        // If the doc doesn't exist, it might be a stale reference. Try to clean it up.
-        try {
-            const checklistRef = doc(db, 'checklists', activeChecklist.id);
-            await updateDoc(checklistRef, { documentIds: arrayRemove(documentId) });
-            toast({ title: "Cleanup Complete", description: "A stale document reference was removed." });
-        } catch (cleanupError) {
-            console.error("Failed to clean up stale document reference:", cleanupError);
-            toast({ title: "Error", description: "Could not find document record to delete.", variant: "destructive" });
-        }
+        toast({ title: "Error", description: "Could not find document record to delete.", variant: "destructive" });
         return;
     }
 
-    // 2. Attempt to delete the file from Firebase Storage
     try {
         const fileRef = storageRef(storage, documentData.storagePath);
         await deleteObject(fileRef);
     } catch (error: any) {
-        if (error.code === 'storage/object-not-found') {
-            console.warn(`File not found in storage at path: ${documentData.storagePath}. Proceeding with Firestore cleanup.`);
-        } else {
-            // For other storage errors (e.g., permissions), stop and alert the user.
+        if (error.code !== 'storage/object-not-found') {
             console.error("Error deleting file from Storage:", error);
             toast({ title: "Storage Error", description: "Could not delete file. Check storage permissions.", variant: "destructive" });
             return;
         }
     }
 
-    // 3. Delete the Firestore document and remove its ID from the checklist
     try {
         const batch = writeBatch(db);
         batch.delete(docToDeleteRef);
