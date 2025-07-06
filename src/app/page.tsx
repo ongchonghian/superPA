@@ -31,12 +31,22 @@ import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
 import { ChecklistAiSuggestionDialog } from '@/components/checklist-ai-suggestion-dialog';
-import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion } from '@/ai/flows/suggest-checklist-next-steps';
+import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion, InformationRequest } from '@/ai/flows/suggest-checklist-next-steps';
 import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
 import { executeAiTodo } from '@/ai/flows/execute-ai-todo';
 import { TaskDialog } from '@/components/task-dialog';
 import { TaskRemarksSheet } from '@/components/task-remarks-sheet';
 import { DocumentManager } from '@/components/document-manager';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function Home() {
   const { toast } = useToast();
@@ -1035,6 +1045,7 @@ export default function Home() {
         open={isAiDialogOpen}
         onOpenChange={setIsAiDialogOpen}
         suggestions={aiAnalysisResult?.suggestions || []}
+        informationRequests={aiAnalysisResult?.informationRequests || []}
         isLoading={isAiLoading}
         tasks={activeChecklist?.tasks || []}
         onAddSuggestion={handleAddSuggestionAsRemark}
@@ -1085,4 +1096,3 @@ export default function Home() {
     </div>
   );
 }
-
