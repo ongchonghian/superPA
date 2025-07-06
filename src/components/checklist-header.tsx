@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -34,7 +35,7 @@ interface ChecklistHeaderProps {
   activeChecklistId: string | null;
   onSwitch: (id: string) => void;
   onAdd: () => void;
-  onDelete: (id: string) => void;
+  onDeleteRequest: (id: string) => void;
   onInitiateImport: (mode: 'new' | 'current') => void;
   onExportMarkdown: () => void;
   onExportPdf: () => void;
@@ -48,7 +49,7 @@ export function ChecklistHeader({
   activeChecklistId,
   onSwitch,
   onAdd,
-  onDelete,
+  onDeleteRequest,
   onInitiateImport,
   onExportMarkdown,
   onExportPdf,
@@ -143,7 +144,7 @@ export function ChecklistHeader({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-destructive focus:text-destructive"
-                    onSelect={() => onDelete(activeChecklistId)}
+                    onSelect={() => onDeleteRequest(activeChecklistId)}
                   >
                     <Trash2 className="mr-2 h-4 w-4" /> Delete Current Checklist
                   </DropdownMenuItem>
