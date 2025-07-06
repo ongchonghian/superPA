@@ -68,8 +68,6 @@ You have been provided with context documents. These documents are the primary s
 {{#each contextDocuments}}
 ## Document: {{{fileName}}}
 {{{media url=fileDataUri}}}
-
----
 {{/each}}
 --- CONTEXT DOCUMENTS END ---
 {{/if}}
