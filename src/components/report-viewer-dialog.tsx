@@ -12,6 +12,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, ClipboardCopy } from 'lucide-react';
 import { Button } from './ui/button';
 import { useToast } from '@/hooks/use-toast';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface ReportViewerDialogProps {
   open: boolean;
@@ -60,15 +62,17 @@ export function ReportViewerDialog({ open, onOpenChange, content, isLoading }: R
           </div>
         </DialogHeader>
         <div className="flex-1 min-h-0">
-          <ScrollArea className="h-full rounded-md border p-4">
+          <ScrollArea className="h-full rounded-md border">
             {isLoading ? (
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             ) : (
-              <div className="text-sm text-foreground whitespace-pre-wrap font-code">
-                {content}
-              </div>
+              <article className="prose prose-sm dark:prose-invert max-w-none p-4">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {content}
+                </ReactMarkdown>
+              </article>
             )}
           </ScrollArea>
         </div>
