@@ -19,6 +19,7 @@ interface DocumentManagerProps {
 
 export function DocumentManager({ documents, onUpload, onDelete, isUploading, storageCorsError }: DocumentManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const storageBucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
 
   const handleUploadClick = async () => {
     if (fileInputRef.current?.files) {
@@ -70,13 +71,13 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading, st
                     </pre>
                   </li>
                   <li>
-                    <strong>Apply the configuration</strong> by running this command. Replace <code className="bg-black/20 px-1 py-0.5 rounded">YOUR_PROJECT_ID</code> with your actual Firebase Project ID.
+                    <strong>Apply the configuration</strong> by running this command, using the bucket name from your <code className="bg-black/20 px-1 py-0.5 rounded">.env.local</code> file.
                     <pre className="mt-2 p-2 bg-black/20 rounded-md text-xs font-mono select-all">
-                      gcloud storage buckets update gs://YOUR_PROJECT_ID.appspot.com --cors-file=cors.json
+                      gcloud storage buckets update gs://{storageBucketName} --cors-file=cors.json
                     </pre>
                   </li>
                   <li>
-                    <strong>Try uploading again.</strong> The change can take a minute to apply. If it still fails, double-check that your Project ID is correct.
+                    <strong>Try uploading again.</strong> The change can take a minute to apply.
                   </li>
                 </ol>
               </div>

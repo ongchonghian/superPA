@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -11,7 +12,7 @@ export function FirebaseTroubleshootingGuide({ showRestartNote = true }: { showR
             Go to your <a href="https://console.firebase.google.com/" target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">Firebase Console</a> &rarr; Project Settings (⚙️) &rarr; General tab. Scroll to "Your apps" and find your Web App's configuration. Ensure these values in your <code className="bg-muted px-1 py-0.5 rounded text-xs">.env.local</code> file match <strong>exactly</strong>:
             <ul className="list-disc list-inside pl-4 mt-2 space-y-1">
                 <li><code className="bg-muted px-1 py-0.5 rounded text-xs">NEXT_PUBLIC_FIREBASE_PROJECT_ID</code></li>
-                <li><code className="bg-muted px-1 py-0.5 rounded text-xs">NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET</code> (must be `your-project-id.appspot.com`)</li>
+                <li><code className="bg-muted px-1 py-0.5 rounded text-xs">NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET</code></li>
                 <li><code className="bg-muted px-1 py-0.5 rounded text-xs">NEXT_PUBLIC_FIREBASE_API_KEY</code></li>
             </ul>
         </p>
