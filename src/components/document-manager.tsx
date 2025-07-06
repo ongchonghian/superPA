@@ -12,7 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 interface DocumentManagerProps {
   documents: Document[];
   onUpload: (files: FileList) => Promise<void>;
-  onDelete: (documentId: string) => Promise<void>;
+  onDelete: (documentId: string) => void;
   isUploading: boolean;
   storageCorsError: boolean;
 }
@@ -29,12 +29,6 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading, st
       }
     }
   };
-  
-  const handleDeleteClick = async (docId: string) => {
-    if (window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
-        await onDelete(docId);
-    }
-  }
 
   return (
     <Card className="mb-6 no-print">
@@ -116,7 +110,7 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading, st
                         <File className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                         <span className="font-medium text-sm truncate" title={doc.fileName}>{doc.fileName}</span>
                     </div>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive flex-shrink-0" onClick={() => handleDeleteClick(doc.id)} disabled={isUploading}>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive flex-shrink-0" onClick={() => onDelete(doc.id)} disabled={isUploading}>
                       <Trash2 className="h-4 w-4" />
                       <span className="sr-only">Delete document</span>
                   </Button>

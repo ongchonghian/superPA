@@ -734,6 +734,12 @@ export default function Home() {
     }
   }, [activeChecklist, toast]);
   
+  const confirmAndDeleteDocument = (documentId: string) => {
+    if (window.confirm('Are you sure you want to delete this document? This action cannot be undone.')) {
+        handleDeleteDocument(documentId);
+    }
+  };
+
   const progress = useMemo(() => {
     if (!activeChecklist || activeChecklist.tasks.length === 0) return 0;
     const completedTasks = activeChecklist.tasks.filter(t => t.status === 'complete').length;
@@ -832,7 +838,7 @@ export default function Home() {
             <DocumentManager 
               documents={documents}
               onUpload={handleUploadDocuments}
-              onDelete={handleDeleteDocument}
+              onDelete={confirmAndDeleteDocument}
               isUploading={isUploading}
               storageCorsError={storageCorsError}
             />
