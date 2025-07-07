@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -102,7 +103,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
     const handleDeleteRemark = (remarkId: string) => {
         if (!task) return;
         if (window.confirm('Are you sure you want to delete this remark?')) {
-            const updatedRemarks = task.remarks.filter(r => r.id !== remarkId);
+            const updatedRemarks = task.remarks.filter(r => r.id !== remarkId && r.parentId !== remarkId); // Also delete children
             const updatedTask = { ...task, remarks: updatedRemarks };
             onUpdateTask(updatedTask);
         }
@@ -156,15 +157,42 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
         }, 0);
     };
 
+    const flattenedRemarks = useMemo(() => {
+        if (!task) return [];
+
+        const list: {remark: Remark, level: number}[] = [];
+        const remarksMap = new Map<string, Remark[]>();
+        
+        task.remarks.forEach(remark => {
+            const parentId = remark.parentId || 'root';
+            if (!remarksMap.has(parentId)) {
+                remarksMap.set(parentId, []);
+            }
+            remarksMap.get(parentId)!.push(remark);
+        });
+        
+        remarksMap.forEach(children => {
+            children.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        });
+
+        const addChildrenToList = (parentId: string, level: number) => {
+            const children = remarksMap.get(parentId) || [];
+            children.forEach(child => {
+                list.push({ remark: child, level: level });
+                addChildrenToList(child.id, level + 1);
+            });
+        };
+        
+        addChildrenToList('root', 0);
+        return list;
+
+    }, [task]);
+
     const filteredAssignees = assignees.filter(a => a && a.toLowerCase().includes(mentionQuery.toLowerCase()));
 
     if (!task) return null;
 
     const isComplete = task.status === 'complete';
-    
-    const sortedRemarks = [...task.remarks].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-    const aiTodos = sortedRemarks.filter(r => r.text.startsWith('[ai-todo|'));
-    const regularRemarks = sortedRemarks.filter(r => !r.text.startsWith('[ai-todo|'));
 
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
@@ -175,80 +203,53 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
                 </SheetHeader>
                 <ScrollArea className="flex-1 my-4 -mx-4 sm:-mx-6" viewportRef={scrollAreaRef}>
                     <div className="space-y-4 py-4 px-4 sm:px-6">
-                        {task.remarks.length > 0 ? (
-                            <>
-                                {aiTodos.map(remark => (
-                                    <div key={remark.id} className="group flex items-start gap-3">
-                                        <Avatar className="h-8 w-8 border">
-                                            <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
-                                        </Avatar>
-                                        <div className="flex-1 bg-muted/50 rounded-lg p-3">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <p className="font-semibold text-sm text-foreground">{remark.userId}</p>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
-                                                    </p>
-                                                </div>
-                                            </div>
-                                            <p className="text-sm text-foreground/90 whitespace-pre-wrap mt-1">{remark.text}</p>
+                        {flattenedRemarks.length > 0 ? (
+                           flattenedRemarks.map(({ remark, level }) => (
+                            <div key={remark.id} className="group flex items-start gap-3" style={{ paddingLeft: `${level * 1.5}rem` }}>
+                                <Avatar className="h-8 w-8 border">
+                                    <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 bg-muted/50 rounded-lg p-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <p className="font-semibold text-sm text-foreground">{remark.userId}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
+                                            </p>
                                         </div>
-                                    </div>
-                                ))}
-
-                                {aiTodos.length > 0 && regularRemarks.length > 0 && (
-                                    <div className="py-2">
-                                        <hr className="border-dashed" />
-                                    </div>
-                                )}
-
-                                {regularRemarks.map(remark => (
-                                <div key={remark.id} className="group flex items-start gap-3">
-                                    <Avatar className="h-8 w-8 border">
-                                        <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex-1 bg-muted/50 rounded-lg p-3">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center gap-2">
-                                                <p className="font-semibold text-sm text-foreground">{remark.userId}</p>
-                                                <p className="text-xs text-muted-foreground">
-                                                    {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
-                                                </p>
+                                        {remark.userId === userId && editingRemarkId !== remark.id && !isComplete && !remark.text.startsWith('[') &&(
+                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditStart(remark)}>
+                                                    <Pencil className="h-3 w-3" />
+                                                    <span className="sr-only">Edit</span>
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleDeleteRemark(remark.id)}>
+                                                    <Trash2 className="h-3 w-3" />
+                                                    <span className="sr-only">Delete</span>
+                                                </Button>
                                             </div>
-                                            {remark.userId === userId && editingRemarkId !== remark.id && !isComplete && (
-                                                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditStart(remark)}>
-                                                        <Pencil className="h-3 w-3" />
-                                                        <span className="sr-only">Edit</span>
-                                                    </Button>
-                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleDeleteRemark(remark.id)}>
-                                                        <Trash2 className="h-3 w-3" />
-                                                        <span className="sr-only">Delete</span>
-                                                    </Button>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {editingRemarkId === remark.id ? (
-                                            <div className="mt-2 space-y-2">
-                                                <Textarea 
-                                                    value={editingText} 
-                                                    onChange={(e) => setEditingText(e.target.value)}
-                                                    className="text-sm"
-                                                    rows={3}
-                                                    autoFocus
-                                                />
-                                                <div className="flex justify-end gap-2">
-                                                    <Button variant="ghost" size="sm" onClick={handleEditCancel}>Cancel</Button>
-                                                    <Button size="sm" onClick={handleEditSave}>Save Changes</Button>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <p className="text-sm text-foreground/90 whitespace-pre-wrap mt-1">{remark.text}</p>
                                         )}
                                     </div>
+                                    {editingRemarkId === remark.id ? (
+                                        <div className="mt-2 space-y-2">
+                                            <Textarea 
+                                                value={editingText} 
+                                                onChange={(e) => setEditingText(e.target.value)}
+                                                className="text-sm"
+                                                rows={3}
+                                                autoFocus
+                                            />
+                                            <div className="flex justify-end gap-2">
+                                                <Button variant="ghost" size="sm" onClick={handleEditCancel}>Cancel</Button>
+                                                <Button size="sm" onClick={handleEditSave}>Save Changes</Button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-foreground/90 whitespace-pre-wrap mt-1">{remark.text}</p>
+                                    )}
                                 </div>
-                                ))}
-                            </>
+                            </div>
+                           ))
                         ) : (
                             <p className="text-sm text-muted-foreground text-center py-8">No remarks yet.</p>
                         )}

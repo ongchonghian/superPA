@@ -1,3 +1,4 @@
+
 import {PRIORITIES, STATUSES} from './data';
 
 export type TaskStatus = (typeof STATUSES)[number];
@@ -8,6 +9,7 @@ export interface Remark {
   text: string;
   userId: string;
   timestamp: string; // ISO string for Firestore compatibility
+  parentId?: string; // For nesting remarks
 }
 
 export interface Task {

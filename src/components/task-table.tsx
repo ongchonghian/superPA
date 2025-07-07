@@ -36,6 +36,7 @@ import {
   CheckCircle2,
   ArrowUpRight,
   Loader2,
+  CornerDownRight,
 } from 'lucide-react';
 import type { Checklist, Task, TaskPriority, TaskStatus, Remark } from '@/lib/types';
 import { format, parseISO, formatDistanceToNow, isSameDay } from 'date-fns';
@@ -50,7 +51,7 @@ interface TaskTableProps {
   onUpdate: (checklist: Partial<Checklist> & { id: string }) => void;
   onExecuteAiTodo: (task: Task, remark: Remark) => void;
   runningRemarkIds: string[];
-  onRunRefinedPrompt: (task: Task, topic: string) => void;
+  onRunRefinedPrompt: (task: Task, parentRemark: Remark, topic: string) => void;
 }
 
 const statusColors: { [key in TaskStatus]: string } = {
@@ -68,12 +69,60 @@ const priorityColors: { [key in TaskPriority]: string } = {
 interface RemarkDisplayProps {
   remark: Remark;
   task: Task;
-  onRunRefinedPrompt: (task: Task, topic: string) => void;
+  onRunRefinedPrompt: (task: Task, parentRemark: Remark, topic: string) => void;
   isTaskBusy: boolean;
 }
 
 const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy }: RemarkDisplayProps) => {
   const { text } = remark;
+
+  const promptExecutionMatch = text.match(/^\[prompt-execution\|(running|completed|failed)\]\s*(.*)/s);
+  if (promptExecutionMatch) {
+    const status = promptExecutionMatch[1];
+    let content = promptExecutionMatch[2].trim();
+    const storageLinkRegex = /\[View results\]\(storage:\/\/([^)]+)\)/;
+    const storageMatch = content.match(storageLinkRegex);
+    let path = '';
+    if(storageMatch) {
+        path = storageMatch[1];
+        content = content.replace(storageLinkRegex, '').trim();
+    }
+    
+    const statusPill = (
+        <span className={`capitalize px-1.5 py-0.5 text-xs rounded-full font-medium ${
+            status === 'running' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' :
+            status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' :
+            'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
+        }`}>
+            {status}
+        </span>
+    );
+
+    const handleViewReport = () => {
+      window.dispatchEvent(new CustomEvent('view-report', { detail: path }));
+    };
+
+    return (
+      <div className="p-2 mt-1 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20">
+        <div className="flex items-start gap-2.5">
+          <CornerDownRight className="h-4 w-4 mt-0.5 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+          <div className="flex-1">
+             <div className="flex justify-between items-center mb-1">
+                <h4 className="text-xs font-semibold tracking-wider uppercase text-purple-700 dark:text-purple-400">Prompt Execution</h4>
+                {statusPill}
+            </div>
+            <p className="text-sm text-foreground/90 whitespace-pre-wrap">{content}</p>
+            {path && (
+                 <Button variant="link" className="p-0 h-auto text-sm font-medium text-primary hover:underline mt-2" onClick={handleViewReport}>
+                    View Full Report
+                    <ArrowUpRight className="inline-block ml-1 h-3 w-3" />
+                </Button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Render AI To-Do
   const newAiTodoMatch = text.match(/^\[ai-todo\|(pending|running|completed|failed)\]\s*(.*)/s);
@@ -138,7 +187,7 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy }: RemarkD
                 </Button>
                 
                 {promptGenMatch && (
-                  <Button variant="outline" size="sm" className="h-auto px-2 py-1 text-xs" onClick={() => onRunRefinedPrompt(task, promptGenMatch[1].trim())} disabled={isTaskBusy}>
+                  <Button variant="outline" size="sm" className="h-auto px-2 py-1 text-xs" onClick={() => onRunRefinedPrompt(task, remark, promptGenMatch[1].trim())} disabled={isTaskBusy}>
                      <WandSparkles className="mr-1.5 h-3 w-3" />
                      Run Generated Prompt
                   </Button>
@@ -324,9 +373,30 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
           <TableBody>
             {filteredAndSortedTasks.length > 0 ? (
               filteredAndSortedTasks.map(task => {
-                const sortedRemarks = [...task.remarks].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
                 const isTaskBusy = task.remarks.some(r => runningRemarkIds.includes(r.id));
                 
+                const flattenedRemarks: {remark: Remark, level: number}[] = [];
+                const remarksMap = new Map<string, Remark[]>();
+                task.remarks.forEach(remark => {
+                    const parentId = remark.parentId || 'root';
+                    if (!remarksMap.has(parentId)) {
+                        remarksMap.set(parentId, []);
+                    }
+                    remarksMap.get(parentId)!.push(remark);
+                });
+                remarksMap.forEach(children => {
+                    children.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                });
+            
+                const addChildrenToFlattenedList = (parentId: string, level: number) => {
+                    const children = remarksMap.get(parentId) || [];
+                    children.forEach(child => {
+                        flattenedRemarks.push({ remark: child, level: level });
+                        addChildrenToFlattenedList(child.id, level + 1);
+                    });
+                };
+                addChildrenToFlattenedList('root', 0);
+
                 return (
                   <TableRow key={task.id} data-state={task.status === 'complete' ? 'completed' : 'pending'}>
                     <TableCell className="p-2 align-top">
@@ -341,12 +411,12 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                       <div className={task.status === 'complete' ? 'line-through' : ''}>{task.description}</div>
                       
                       <div className="mt-4 space-y-3">
-                        {sortedRemarks.map(remark => {
+                        {flattenedRemarks.map(({ remark, level }) => {
                           const isRunning = runningRemarkIds.includes(remark.id);
                           const isPending = remark.text.startsWith('[ai-todo|pending]');
 
                           return (
-                            <div key={remark.id} className="flex items-start gap-2.5">
+                            <div key={remark.id} className="flex items-start gap-2.5" style={{ paddingLeft: `${level * 1.5}rem` }}>
                               <Avatar className="h-6 w-6 border text-xs">
                                   <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
                               </Avatar>
@@ -365,7 +435,7 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                                   />
                                   {isPending && (
                                     <div className="mt-2">
-                                        <Button size="sm" variant="outline" onClick={() => onExecuteAiTodo(task, remark)} disabled={isRunning}>
+                                        <Button size="sm" variant="outline" onClick={() => onExecuteAiTodo(task, remark)} disabled={isRunning || isTaskBusy}>
                                             {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
                                             {isRunning ? 'Running...' : 'Run this To-Do'}
                                         </Button>

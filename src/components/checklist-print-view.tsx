@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -49,6 +50,29 @@ const RemarkPrintDisplay = ({ text }: { text: string }) => {
     );
   }
 
+  const promptExecutionMatch = text.match(/^\[prompt-execution\|(running|completed|failed)\]\s*(.*)/s);
+  if (promptExecutionMatch) {
+    const status = promptExecutionMatch[1];
+    let content = promptExecutionMatch[2].trim();
+    const storageLinkRegex = /\[View results\]\(storage:\/\/([^)]+)\)/;
+    const storageMatch = content.match(storageLinkRegex);
+    if(storageMatch) {
+        content = content.replace(storageLinkRegex, '').trim();
+    }
+    return (
+      <div className="p-2 mt-1 rounded-lg border border-purple-200 bg-purple-50">
+        <div className="flex items-start gap-2.5">
+          <WandSparkles className="h-4 w-4 mt-0.5 text-purple-600 flex-shrink-0" />
+          <div className="flex-1">
+            <h4 className="text-xs font-semibold tracking-wider uppercase text-purple-700">Prompt Execution ({status})</h4>
+            <p className="text-sm text-foreground/90 whitespace-pre-wrap">{content}</p>
+             {storageMatch && <p className="text-xs text-muted-foreground">(Full report available in interactive view)</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const storageLinkRegex = /\[View results\]\(storage:\/\/([^)]+)\)/;
   const storageMatch = text.match(storageLinkRegex);
   const summaryMatch = text.match(/\*\*Summary:\*\*\n(.+)/s);
@@ -78,15 +102,37 @@ export function ChecklistPrintView({ checklist }: ChecklistPrintViewProps) {
   const completedTasks = checklist.tasks.filter(t => t.status === 'complete');
 
   const renderTaskRow = (task: Task) => {
-    const sortedRemarks = [...task.remarks].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    const remarksMap = new Map<string, Remark[]>();
+    task.remarks.forEach(remark => {
+        const parentId = remark.parentId || 'root';
+        if (!remarksMap.has(parentId)) {
+            remarksMap.set(parentId, []);
+        }
+        remarksMap.get(parentId)!.push(remark);
+    });
+    remarksMap.forEach(children => {
+        children.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    });
+
+    const flattenedRemarks: {remark: Remark, level: number}[] = [];
+    const addChildrenToFlattenedList = (parentId: string, level: number) => {
+        const children = remarksMap.get(parentId) || [];
+        children.forEach(child => {
+            flattenedRemarks.push({ remark: child, level: level });
+            addChildrenToFlattenedList(child.id, level + 1);
+        });
+    };
+    addChildrenToFlattenedList('root', 0);
+
+
     return (
       <TableRow key={task.id}>
         <TableCell className="w-[40%] font-medium align-top">
           <div>{task.description}</div>
-          {sortedRemarks.length > 0 && (
+          {flattenedRemarks.length > 0 && (
             <div className="mt-4 space-y-3">
-              {sortedRemarks.map(remark => (
-                <div key={remark.id} className="flex items-start gap-2.5">
+              {flattenedRemarks.map(({ remark, level }) => (
+                <div key={remark.id} className="flex items-start gap-2.5" style={{ paddingLeft: `${level * 1.5}rem` }}>
                   <Avatar className="h-6 w-6 border text-xs">
                       <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
                   </Avatar>
