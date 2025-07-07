@@ -39,6 +39,7 @@ interface ChecklistHeaderProps {
   onInitiateImport: (mode: 'new' | 'current') => void;
   onExportMarkdown: () => void;
   onExportPdf: () => void;
+  onExportConfluence: () => void;
   onGetAiSuggestions: () => void;
   progress: number;
   hasActiveChecklist: boolean;
@@ -53,6 +54,7 @@ export function ChecklistHeader({
   onInitiateImport,
   onExportMarkdown,
   onExportPdf,
+  onExportConfluence,
   onGetAiSuggestions,
   progress,
   hasActiveChecklist,
@@ -137,6 +139,7 @@ export function ChecklistHeader({
                 <DropdownMenuSubContent>
                   <DropdownMenuItem onSelect={onExportMarkdown}>as Markdown</DropdownMenuItem>
                   <DropdownMenuItem onSelect={onExportPdf}>as PDF</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onExportConfluence}>for Confluence</DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
               {activeChecklistId && (

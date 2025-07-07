@@ -49,6 +49,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ReportViewerDialog } from '@/components/report-viewer-dialog';
 import { ChecklistPrintView } from '@/components/checklist-print-view';
+import { ChecklistConfluenceView } from '@/components/checklist-confluence-view';
 
 
 export default function Home() {
@@ -65,6 +66,7 @@ export default function Home() {
   const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const confluenceExportRef = useRef<HTMLDivElement>(null);
   const [isNewChecklistDialogOpen, setIsNewChecklistDialogOpen] = useState(false);
   const [importMode, setImportMode] = useState<'new' | 'current' | null>(null);
   const [importConflict, setImportConflict] = useState<{ conflictingId: string; name: string; tasks: Task[] } | null>(null);
@@ -609,6 +611,30 @@ export default function Home() {
     toast({ title: "Preparing PDF...", description: "Your browser's print dialog will open." });
     setTimeout(() => window.print(), 500);
   };
+
+  const handleExportConfluence = () => {
+    if (!confluenceExportRef.current) return;
+    
+    const htmlContent = confluenceExportRef.current.innerHTML;
+    // Use the Clipboard API to write the HTML content.
+    // We use a Blob with 'text/html' type to give a hint to the clipboard.
+    const blob = new Blob([htmlContent], { type: 'text/html' });
+    const clipboardItem = new ClipboardItem({ 'text/html': blob });
+
+    navigator.clipboard.write([clipboardItem]).then(() => {
+        toast({
+            title: "Copied to clipboard!",
+            description: "You can now paste the table into your Confluence page.",
+        });
+    }, (err) => {
+        console.error('Could not copy HTML to clipboard: ', err);
+        toast({
+            title: "Copy Failed",
+            description: "Could not copy table to clipboard. Your browser might not support this feature.",
+            variant: 'destructive',
+        });
+    });
+  };
   
   const fileToDataUri = useCallback((file: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -1131,11 +1157,12 @@ export default function Home() {
         onInitiateImport={handleInitiateImport}
         onExportMarkdown={handleExportMarkdown}
         onExportPdf={handleExportPdf}
+        onExportConfluence={handleExportConfluence}
         onGetAiSuggestions={fetchAiSuggestions}
         progress={progress}
         hasActiveChecklist={!!activeChecklist}
       />
-      <main className="p-4 sm:p-6 lg:p-8 no-print print-container">
+      <main className="p-4 sm:p-6 lg:p-8 no-print">
         {activeChecklist ? (
           <>
             <DocumentManager 
@@ -1165,6 +1192,13 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      <div className="hidden">
+        <div ref={confluenceExportRef}>
+            <ChecklistConfluenceView checklist={activeChecklist} />
+        </div>
+      </div>
+
       <div className="print-container">
         {activeChecklist && <ChecklistPrintView checklist={activeChecklist} />}
       </div>
@@ -1251,9 +1285,3 @@ export default function Home() {
     </div>
   );
 }
-    
-
-    
-
-    
-
