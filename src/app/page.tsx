@@ -276,24 +276,55 @@ export default function Home() {
     }
   }, [toast]);
 
+  const findChecklistByName = useCallback(async (name: string): Promise<{ id: string; name: string } | null> => {
+    if (!db || !userId) return null;
+    
+    const checklistsQuery = query(collection(db, 'checklists'), where('ownerId', '==', userId));
+    const querySnapshot = await getDocs(checklistsQuery);
+    
+    if (querySnapshot.empty) {
+        return null;
+    }
+
+    const normalizedNameToFind = name.trim().toLowerCase();
+
+    for (const doc of querySnapshot.docs) {
+        const checklistData = doc.data();
+        const checklistName = checklistData.name as string | undefined;
+        if (checklistName && checklistName.trim().toLowerCase() === normalizedNameToFind) {
+            return { id: doc.id, name: checklistName };
+        }
+    }
+
+    return null;
+  }, [db, userId]);
+
   const handleSaveNewChecklist = useCallback(async (name: string, tasks: Task[] = []) => {
-    if (name && userId) {
-      try {
+    if (!name || !userId) return;
+
+    // Final safeguard check before writing to the database.
+    const existingChecklist = await findChecklistByName(name);
+    if (existingChecklist) {
+        console.error(`Safeguard triggered: Prevented duplicate creation of checklist "${name}".`);
+        toast({ title: "Import Error", description: `A checklist named "${name}" already exists. The operation was aborted to prevent duplicates.`, variant: "destructive" });
+        return;
+    }
+
+    try {
         const newChecklist: Omit<Checklist, 'id'> = {
-          name: name,
-          tasks: tasks,
-          ownerId: userId,
-          documentIds: [],
+            name: name,
+            tasks: tasks,
+            ownerId: userId,
+            documentIds: [],
         };
         const docRef = await addDoc(collection(db!, 'checklists'), newChecklist);
         setActiveChecklistId(docRef.id);
         toast({ title: "Success", description: `Checklist "${name}" created.` });
-      } catch (error) {
+    } catch (error) {
         console.error("Error adding checklist: ", error);
         toast({ title: "Error", description: "Failed to create checklist.", variant: "destructive" });
-      }
     }
-  }, [toast, userId]);
+  }, [toast, userId, findChecklistByName]);
   
   const handleSwitchChecklist = useCallback((id: string) => {
     setActiveChecklistId(id);
@@ -349,9 +380,9 @@ export default function Home() {
         // Delete the checklist itself
         batch.delete(checklistRef);
         await batch.commit();
-
-        // If the deleted checklist was the active one, switch to another.
-        // This makes the UI update feel instantaneous.
+        
+        // If the deleted checklist was the active one, immediately update the state
+        // to make the UI feel instantaneous and prevent issues with stale state.
         if (activeChecklistId === id) {
           const remainingChecklists = checklistMetas.filter(c => c.id !== id);
           const newActiveId = remainingChecklists.length > 0 ? remainingChecklists[0].id : null;
@@ -407,7 +438,7 @@ export default function Home() {
     }
   }, [db, handleUpdateChecklist, toast]);
 
-  const handleFileSelectedForImport = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelectedForImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!importMode || !userId || !db) return;
 
     const file = event.target.files?.[0];
@@ -532,17 +563,13 @@ export default function Home() {
         if (currentTask) { newTasks.push(currentTask); }
 
         if (importMode === 'new') {
-            const checklistsRef = collection(db, 'checklists');
-            const q = query(checklistsRef, where('ownerId', '==', userId), where('name', '==', newChecklistName));
-            const querySnapshot = await getDocs(q);
-            const existingChecklist = querySnapshot.docs.length > 0 ? { id: querySnapshot.docs[0].id, name: querySnapshot.docs[0].data().name as string } : null;
+            const existingChecklist = await findChecklistByName(newChecklistName);
 
             if (existingChecklist) {
               setImportConflict({ conflictingId: existingChecklist.id, name: newChecklistName, tasks: newTasks });
-              return;
+            } else {
+              await handleSaveNewChecklist(newChecklistName, newTasks);
             }
-            await handleSaveNewChecklist(newChecklistName, newTasks);
-            toast({ title: "Import successful", description: `Checklist "${newChecklistName}" with ${newTasks.length} tasks imported.` });
 
         } else if (importMode === 'current') {
             if (!activeChecklist) {
