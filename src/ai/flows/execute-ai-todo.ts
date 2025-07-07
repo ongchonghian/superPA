@@ -113,21 +113,6 @@ Generate the refined prompt and its summary now, in JSON format.
 `
 });
 
-// New prompt to execute a refined prompt
-const executeRefinedPrompt = ai.definePrompt({
-  name: 'executeRefinedPrompt',
-  input: {
-    schema: z.object({
-      refinedPrompt: z.string().describe("The highly-engineered prompt to execute."),
-    }),
-  },
-  output: { schema: ExecuteAiTodoOutputSchema }, // Re-use the main output schema
-  prompt: `{{{refinedPrompt}}}
-
-  IMPORTANT: After executing the prompt above, you must also provide a concise, one-sentence summary of the result. Your entire response MUST conform to the required JSON output format.`
-});
-
-
 // Default prompt for simple tasks
 const prompt = ai.definePrompt({
   name: 'executeAiTodoPrompt',
@@ -223,15 +208,27 @@ const executeAiTodoFlow = ai.defineFlow(
         }
         const { refinedPrompt } = refinedPromptOutput;
 
-        // Step 2: Execute the refined prompt
-        const { output: executionOutput } = await executeRefinedPrompt({
-            refinedPrompt,
+        // Step 2: Execute the refined prompt to get the main content.
+        const executionResponse = await ai.generate({
+          prompt: refinedPrompt,
         });
 
-        if (!executionOutput) {
-            throw new Error("Failed to get a result from executing the refined prompt.");
+        const resultMarkdown = executionResponse.text;
+        if (!resultMarkdown) {
+          throw new Error("Executing the refined prompt yielded no text result.");
         }
-        return executionOutput;
+        
+        // Step 3: Generate a summary for the result in a separate, simple call.
+        const summaryResponse = await ai.generate({
+          prompt: `Concisely summarize the following text in a single sentence:\n\n---\n\n${resultMarkdown.substring(0, 4000)}`
+        });
+        
+        const summary = summaryResponse.text || "Execution completed.";
+
+        return {
+            resultMarkdown,
+            summary,
+        };
 
     } else {
       const {output} = await prompt(input);
