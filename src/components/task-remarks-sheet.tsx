@@ -102,7 +102,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
 
     const handleDeleteRemark = (remarkId: string) => {
         if (!task) return;
-        if (window.confirm('Are you sure you want to delete this remark?')) {
+        if (window.confirm('Are you sure you want to delete this remark? This cannot be undone.')) {
             const updatedRemarks = task.remarks.filter(r => r.id !== remarkId && r.parentId !== remarkId); // Also delete children
             const updatedTask = { ...task, remarks: updatedRemarks };
             onUpdateTask(updatedTask);

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -10,9 +11,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, WandSparkles, Lightbulb, MessageSquare, BookOpenCheck } from 'lucide-react';
+import { Loader2, WandSparkles, Lightbulb, MessageSquare, BookOpenCheck, ShieldAlert } from 'lucide-react';
 import type { Task } from '@/lib/types';
-import type { ChecklistSuggestion, InformationRequest } from '@/ai/flows/suggest-checklist-next-steps';
+import type { ChecklistSuggestion, InformationRequest, CapabilityWarning } from '@/ai/flows/suggest-checklist-next-steps';
 import { ScrollArea } from './ui/scroll-area';
 
 interface ChecklistAiSuggestionDialogProps {
@@ -20,6 +21,7 @@ interface ChecklistAiSuggestionDialogProps {
   onOpenChange: (open: boolean) => void;
   suggestions: ChecklistSuggestion[];
   informationRequests: InformationRequest[];
+  capabilityWarnings: CapabilityWarning[];
   isLoading: boolean;
   tasks: Task[];
   onAddSuggestion: (suggestion: ChecklistSuggestion) => void;
@@ -32,6 +34,7 @@ export function ChecklistAiSuggestionDialog({
   onOpenChange, 
   suggestions,
   informationRequests,
+  capabilityWarnings,
   isLoading, 
   tasks,
   onAddSuggestion,
@@ -59,8 +62,17 @@ export function ChecklistAiSuggestionDialog({
     return acc;
   }, {} as Record<string, InformationRequest[]>);
 
+  const warningsByTask = (capabilityWarnings || []).reduce((acc, warning) => {
+    if (!acc[warning.taskId]) {
+      acc[warning.taskId] = [];
+    }
+    acc[warning.taskId].push(warning);
+    return acc;
+  }, {} as Record<string, CapabilityWarning[]>);
+
   const hasSuggestions = suggestions && suggestions.length > 0;
   const hasRequests = informationRequests && informationRequests.length > 0;
+  const hasWarnings = capabilityWarnings && capabilityWarnings.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -80,7 +92,7 @@ export function ChecklistAiSuggestionDialog({
                     <div className="flex items-center justify-center p-8 rounded-md bg-secondary/50">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
-                ) : (hasSuggestions || hasRequests) ? (
+                ) : (hasSuggestions || hasRequests || hasWarnings) ? (
                     <div className="space-y-8">
                         {hasSuggestions && (
                           <div className="space-y-4">
@@ -140,6 +152,29 @@ export function ChecklistAiSuggestionDialog({
                                             <Button size="sm" variant="outline" onClick={() => onProvideInfo(request.taskId)}>
                                                 Answer
                                             </Button>
+                                          </li>
+                                      ))}
+                                      </ul>
+                                  </div>
+                              ))}
+                          </div>
+                        )}
+                        {hasWarnings && (
+                           <div className="space-y-4">
+                              <h3 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
+                                <ShieldAlert className="h-4 w-4 text-amber-500"/>
+                                Capability Warnings
+                              </h3>
+                              {Object.entries(warningsByTask).map(([taskId, taskWarnings]) => (
+                                  <div key={taskId} className="p-4 rounded-lg border bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800/50 space-y-3">
+                                      <h4 className="text-sm font-semibold text-foreground">
+                                          For task: <span className="font-normal italic">&quot;{getTaskDescription(taskId)}&quot;</span>
+                                      </h4>
+                                      <ul className="space-y-3 pt-2">
+                                      {taskWarnings.map((warning, index) => (
+                                          <li key={index} className="flex items-start gap-3 animate-in fade-in duration-300">
+                                            <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-500"/>
+                                            <span className="text-sm text-amber-900 dark:text-amber-200 break-words">{warning.warning}</span>
                                           </li>
                                       ))}
                                       </ul>
