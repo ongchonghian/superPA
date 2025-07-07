@@ -384,18 +384,19 @@ export default function Home() {
             const existingTaskDescriptions = new Set(existingChecklist.tasks.map(t => t.description.trim()));
             const tasksToAppend = tasks.filter(t => !existingTaskDescriptions.has(t.description.trim()));
 
-            const updatedChecklist = {
-                id: checklistId,
-                tasks: [...existingChecklist.tasks, ...tasksToAppend],
-            };
-            await handleUpdateChecklist(updatedChecklist);
-            toast({ title: "Import Successful", description: `${tasksToAppend.length} new tasks appended to "${existingChecklist.name}".`});
+            if (tasksToAppend.length > 0) {
+              const updatedTasks = [...existingChecklist.tasks, ...tasksToAppend];
+              await handleUpdateChecklist({ id: checklistId, tasks: updatedTasks });
+              toast({ title: "Import Successful", description: `${tasksToAppend.length} new task(s) appended to "${existingChecklist.name}".`});
+            } else {
+              toast({ title: "No new tasks found", description: `All tasks from the file already exist in "${existingChecklist.name}".`});
+            }
         }
     } catch (error) {
         console.error("Error appending to checklist:", error);
         toast({ title: "Error", description: "Failed to append tasks to the checklist.", variant: "destructive" });
     }
-  }, [handleUpdateChecklist, toast]);
+  }, [db, handleUpdateChecklist, toast]);
 
   const handleFileSelectedForImport = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (!importMode) return;
@@ -1166,7 +1167,7 @@ export default function Home() {
         progress={progress}
         hasActiveChecklist={!!activeChecklist}
       />
-      <main className="p-4 sm:p-6 lg:p-8 print:hidden">
+      <main className="p-4 sm:p-6 lg:p-8 print:p-0">
         {activeChecklist ? (
           <>
             <DocumentManager 
@@ -1184,7 +1185,7 @@ export default function Home() {
             />
           </>
         ) : (
-          <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border text-center h-[60vh]">
+          <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border text-center h-[60vh] no-print">
             <h2 className="text-xl font-semibold text-foreground">No Checklist Selected</h2>
             <p className="mt-2 text-muted-foreground">Create a new checklist or import one to get started.</p>
             <button
