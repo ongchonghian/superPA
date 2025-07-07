@@ -380,12 +380,16 @@ export default function Home() {
         const docSnap = await getDoc(checklistRef);
         if (docSnap.exists()) {
             const existingChecklist = docSnap.data() as Omit<Checklist, 'id'>;
+            
+            const existingTaskDescriptions = new Set(existingChecklist.tasks.map(t => t.description.trim()));
+            const tasksToAppend = tasks.filter(t => !existingTaskDescriptions.has(t.description.trim()));
+
             const updatedChecklist = {
                 id: checklistId,
-                tasks: [...existingChecklist.tasks, ...tasks],
+                tasks: [...existingChecklist.tasks, ...tasksToAppend],
             };
             await handleUpdateChecklist(updatedChecklist);
-            toast({ title: "Import Successful", description: `${tasks.length} tasks appended to "${existingChecklist.name}".`});
+            toast({ title: "Import Successful", description: `${tasksToAppend.length} new tasks appended to "${existingChecklist.name}".`});
         }
     } catch (error) {
         console.error("Error appending to checklist:", error);
@@ -481,6 +485,8 @@ export default function Home() {
           const remarkMatch = line.match(/^\s*(?:-\s*)?>\s*(.*)/);
           if (remarkMatch && currentTask) {
             let fullRemarkText = remarkMatch[1].trim();
+            if (!fullRemarkText) continue;
+
             let text = fullRemarkText;
             let remarkUserId = 'system';
             let timestamp = new Date().toISOString();
@@ -530,9 +536,7 @@ export default function Home() {
               return;
             }
             if (newTasks.length > 0) {
-              const updatedChecklist = { ...activeChecklist, tasks: [...activeChecklist.tasks, ...newTasks] };
-              await handleUpdateChecklist(updatedChecklist);
-              toast({ title: "Import successful", description: `${newTasks.length} tasks added to "${activeChecklist.name}".` });
+              await handleAppendToChecklist(activeChecklist.id, newTasks);
             } else {
               toast({ title: "Import failed", description: "No valid tasks found in the file.", variant: "destructive" });
             }
