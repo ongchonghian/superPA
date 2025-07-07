@@ -135,7 +135,7 @@ export default function Home() {
     setFirestoreError(false); // Reset on each attempt
     setFirestorePermissionError(false); // Reset on each attempt
 
-    const q = query(collection(db, 'checklists'), where('ownerId', '==', userId));
+    const q = query(collection(db, 'checklists'));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
@@ -1142,6 +1142,7 @@ export default function Home() {
               onUpload={handleUploadDocuments}
               isUploading={isUploading}
               storageCorsError={storageCorsError}
+              onDelete={handleDeleteDocument}
             />
             <TaskTable
               checklist={activeChecklist}
@@ -1249,5 +1250,6 @@ export default function Home() {
     </div>
   );
 }
+    
 
     
