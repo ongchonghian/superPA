@@ -92,18 +92,24 @@ Your analysis must be exhaustive. For each task provided, perform the following 
 
 2.  **Capability Self-Assessment**: Based on the task description and my stated capabilities, can I perform this task?
     *   If the core request is something I **CANNOT** do (e.g., "Generate UI mockups," "Create a logo"), proceed to Step 3.
-    *   If the core request is something I **CAN** do (e.g., "Write tests," "Deploy app", "Design a prompt"), proceed to Step 4.
+    *   If the task's description includes keywords like "design a prompt", "create a prompt", or "engineer a prompt", you **MUST** proceed to Step 4 (Prompt Engineering).
+    *   If the core request is something else I **CAN** do (e.g., "Write tests," "Deploy app"), proceed to Step 5.
 
 3.  **Handle Incapable Tasks**: The task is beyond my capabilities.
     *   You **MUST NOT** generate an AI To-Do suggestion.
     *   Instead, add a warning to the \`capabilityWarnings\` array.
-    *   The warning text should clearly state the limitation and suggest a human role. Example: "Generating visual UI mockups is beyond my capabilities. This task should be assigned to a UI/UX Designer." or "Creating a video advertisement requires multimedia tools I don't have. This should be assigned to a Marketing/Video Production team."
+    *   The warning text should clearly state the limitation and suggest a human role. Example: "Generating visual UI mockups is beyond my capabilities. This task should be assigned to a UI/UX Designer."
 
-4.  **Assess Task Specificity (For Capable Tasks)**: Can you formulate a concrete, automatable AI To-Do right now that is **directly relevant** to the task's description?
-    *   If **YES**, create a concrete AI To-Do suggestion. Example: For a task "Create social media graphics," a good suggestion is \`[ai-todo|pending] Write 5 taglines and descriptions for a Twitter promotion.\`. For a task "Design a prompt to get customer feedback sentiment", a good suggestion is \`[ai-todo|pending] Generate a refined prompt to analyze customer feedback for sentiment, including an improvement summary and key principles applied.\`. Add this to the \`suggestions\` array.
+4.  **Handle Prompt Engineering Tasks**: The task is about prompt engineering.
+    *   You **MUST** suggest the specialized prompt generation to-do.
+    *   Example: For a task "Design a prompt to get customer feedback sentiment", your suggestion **MUST** be \`[ai-todo|pending] Generate a refined prompt to analyze customer feedback for sentiment, including an improvement summary and key principles applied.\`.
+    *   Add this suggestion to the \`suggestions\` array and **do not process this task further**.
+
+5.  **Assess Task Specificity (For Other Capable Tasks)**: Can you formulate a concrete, automatable AI To-Do right now that is **directly relevant** to the task's description?
+    *   If **YES**, create a concrete AI To-Do suggestion. Example: For a task "Create social media graphics," a good suggestion is \`[ai-todo|pending] Write 5 taglines and descriptions for a Twitter promotion.\`. Add this to the \`suggestions\` array.
     *   If **NO**, because the task is too vague (e.g., "Deploy app," "Write tests"), proceed to the next step to be proactive.
 
-5.  **Handle Vague Tasks (Be Proactive!)**: When a task is vague but within my capabilities, your goal is to propose a research task.
+6.  **Handle Vague Tasks (Be Proactive!)**: When a task is vague but within my capabilities, your goal is to propose a research task.
     *   **Attempt to create an assertive, research-based AI To-Do suggestion.** This suggestion must be a logical first step to clarify the vague task. It MUST be relevant. For example, for "Deploy app," a good suggestion is \`[ai-todo|pending] Research and outline deployment options for a Next.js app on Firebase.\`. For "Write tests," a good suggestion is \`[ai-todo|pending] Analyze the codebase and suggest a unit testing strategy, including recommended frameworks.\`. Add this to the \`suggestions\` array.
     *   **If and only if** you cannot formulate a relevant research task, ask a clarifying question. Add this question to the \`informationRequests\` array.
 
