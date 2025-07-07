@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -34,14 +35,14 @@ export async function executeAiTodo(input: ExecuteAiTodoInput): Promise<ExecuteA
   return executeAiTodoFlow(input);
 }
 
-// New schema for prompt generation
+// Schema for prompt generation
 const RefinedPromptOutputSchema = z.object({
   refinedPrompt: z.string().describe("The complete, optimized prompt for the target LLM."),
   improvementSummary: z.string().describe("A brief, markdown-formatted explanation of the primary improvements made and why they enhance the prompt's effectiveness."),
   keyPrinciplesApplied: z.array(z.string()).describe("A bulleted list of the core prompt engineering principles applied."),
 });
 
-// New prompt for prompt generation
+// Prompt for prompt generation
 const generateRefinedPrompt = ai.definePrompt({
     name: 'generateRefinedPrompt',
     input: {
@@ -112,6 +113,22 @@ Generate the refined prompt and its summary now, in JSON format.
 `
 });
 
+// New prompt to execute a refined prompt
+const executeRefinedPrompt = ai.definePrompt({
+  name: 'executeRefinedPrompt',
+  input: {
+    schema: z.object({
+      refinedPrompt: z.string().describe("The highly-engineered prompt to execute."),
+    }),
+  },
+  output: { schema: ExecuteAiTodoOutputSchema }, // Re-use the main output schema
+  prompt: `{{{refinedPrompt}}}
+
+  IMPORTANT: After executing the prompt above, you must also provide a concise, one-sentence summary of the result. Your entire response MUST conform to the required JSON output format.`
+});
+
+
+// Default prompt for simple tasks
 const prompt = ai.definePrompt({
   name: 'executeAiTodoPrompt',
   input: {schema: ExecuteAiTodoInputSchema},
@@ -155,6 +172,7 @@ const executeAiTodoFlow = ai.defineFlow(
   },
   async (input) => {
     const isPromptGeneration = /generate a( refined)? prompt|design a prompt/i.test(input.aiTodoText);
+    const isPromptExecution = /^execute the refined prompt to/i.test(input.aiTodoText);
 
     if (isPromptGeneration) {
         const topicMatch = input.aiTodoText.match(/to (.*)/i);
@@ -190,6 +208,31 @@ const executeAiTodoFlow = ai.defineFlow(
             resultMarkdown,
             summary,
         };
+    } else if (isPromptExecution) {
+        const topicMatch = input.aiTodoText.match(/^execute the refined prompt to (.*)/i);
+        const topic = topicMatch ? topicMatch[1].trim() : input.aiTodoText.replace(/^execute the refined prompt to /, '').trim();
+        
+        // Step 1: Re-generate the refined prompt to ensure we have it.
+        const { output: refinedPromptOutput } = await generateRefinedPrompt({
+            problem: input.taskDescription,
+            topic: topic,
+        });
+
+        if (!refinedPromptOutput) {
+            throw new Error("Failed to generate the refined prompt needed for execution.");
+        }
+        const { refinedPrompt } = refinedPromptOutput;
+
+        // Step 2: Execute the refined prompt
+        const { output: executionOutput } = await executeRefinedPrompt({
+            refinedPrompt,
+        });
+
+        if (!executionOutput) {
+            throw new Error("Failed to get a result from executing the refined prompt.");
+        }
+        return executionOutput;
+
     } else {
       const {output} = await prompt(input);
       return output!;
