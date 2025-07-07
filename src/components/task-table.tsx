@@ -50,6 +50,7 @@ interface TaskTableProps {
   onUpdate: (checklist: Partial<Checklist> & { id: string }) => void;
   onExecuteAiTodo: (task: Task, remark: Remark) => void;
   runningRemarkIds: string[];
+  onRunRefinedPrompt: (task: Task, topic: string) => void;
 }
 
 const statusColors: { [key in TaskStatus]: string } = {
@@ -64,9 +65,18 @@ const priorityColors: { [key in TaskPriority]: string } = {
     Low: 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600',
 };
 
-const RemarkDisplay = ({ text }: { text: string }) => {
-  const newAiTodoMatch = text.match(/^\[ai-todo\|(pending|running|completed|failed)\]\s*(.*)/s);
+interface RemarkDisplayProps {
+  remark: Remark;
+  task: Task;
+  onRunRefinedPrompt: (task: Task, topic: string) => void;
+  isTaskBusy: boolean;
+}
 
+const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy }: RemarkDisplayProps) => {
+  const { text } = remark;
+
+  // Render AI To-Do
+  const newAiTodoMatch = text.match(/^\[ai-todo\|(pending|running|completed|failed)\]\s*(.*)/s);
   if (newAiTodoMatch) {
     const status = newAiTodoMatch[1];
     const todoText = newAiTodoMatch[2].trim();
@@ -98,6 +108,7 @@ const RemarkDisplay = ({ text }: { text: string }) => {
     );
   }
   
+  // Render AI Result
   const storageLinkRegex = /\[View results\]\(storage:\/\/([^)]+)\)/;
   const storageMatch = text.match(storageLinkRegex);
   const summaryMatch = text.match(/\*\*Summary:\*\*\n(.+)/s);
@@ -109,6 +120,9 @@ const RemarkDisplay = ({ text }: { text: string }) => {
     const handleViewReport = () => {
       window.dispatchEvent(new CustomEvent('view-report', { detail: path }));
     };
+    
+    const promptGenSummaryRegex = /\*\*Summary:\*\*\nGenerated a refined prompt for: (.*)/s;
+    const promptGenMatch = text.match(promptGenSummaryRegex);
 
     return (
       <div className="p-2 mt-1 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
@@ -117,20 +131,30 @@ const RemarkDisplay = ({ text }: { text: string }) => {
           <div className="flex-1">
             <h4 className="text-xs font-semibold tracking-wider uppercase text-green-700 dark:text-green-400">AI Execution Complete</h4>
             {summary && <p className="text-sm text-foreground/90 mt-1 mb-2">{summary}</p>}
-            <Button variant="link" className="p-0 h-auto text-sm font-medium text-primary hover:underline" onClick={handleViewReport}>
-                View Full Report
-                <ArrowUpRight className="inline-block ml-1 h-3 w-3" />
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap mt-2">
+                <Button variant="link" className="p-0 h-auto text-sm font-medium text-primary hover:underline" onClick={handleViewReport}>
+                    View Full Report
+                    <ArrowUpRight className="inline-block ml-1 h-3 w-3" />
+                </Button>
+                
+                {promptGenMatch && (
+                  <Button variant="outline" size="sm" className="h-auto px-2 py-1 text-xs" onClick={() => onRunRefinedPrompt(task, promptGenMatch[1].trim())} disabled={isTaskBusy}>
+                     <WandSparkles className="mr-1.5 h-3 w-3" />
+                     Run Generated Prompt
+                  </Button>
+                )}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
+  // Render standard text
   return <p className="text-sm text-foreground/90 whitespace-pre-wrap">{text}</p>;
 };
 
-export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkIds }: TaskTableProps) {
+export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkIds, onRunRefinedPrompt }: TaskTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [filters, setFilters] = useState({
@@ -301,6 +325,7 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
             {filteredAndSortedTasks.length > 0 ? (
               filteredAndSortedTasks.map(task => {
                 const sortedRemarks = [...task.remarks].sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                const isTaskBusy = task.remarks.some(r => runningRemarkIds.includes(r.id));
                 
                 return (
                   <TableRow key={task.id} data-state={task.status === 'complete' ? 'completed' : 'pending'}>
@@ -332,7 +357,12 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                                           {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
                                       </p>
                                   </div>
-                                  <RemarkDisplay text={remark.text} />
+                                  <RemarkDisplay 
+                                    remark={remark} 
+                                    task={task} 
+                                    onRunRefinedPrompt={onRunRefinedPrompt}
+                                    isTaskBusy={isTaskBusy}
+                                  />
                                   {isPending && (
                                     <div className="mt-2">
                                         <Button size="sm" variant="outline" onClick={() => onExecuteAiTodo(task, remark)} disabled={isRunning}>

@@ -890,7 +890,7 @@ export default function Home() {
         await updateDoc(checklistDocRef, { tasks: tasksWithRunning });
 
         // Prepare and call executor flow
-        const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|pending\]\s*/, '').trim();
+        const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|(pending|running)\]\s*/, '').trim();
         const contextDocuments = await getContextDocumentsForAi();
         
         const result = await executeAiTodo({
@@ -980,6 +980,52 @@ export default function Home() {
         setRunningRemarkIds(prev => prev.filter(id => id !== remarkToExecute.id));
     }
   }, [activeChecklist, db, storage, getContextDocumentsForAi, toast]);
+
+  const handleRunRefinedPrompt = useCallback(async (taskToUpdate: Task, topic: string) => {
+    if (!activeChecklist || !db || !userId) {
+      toast({ title: "Error", description: "Cannot run prompt: context is missing.", variant: "destructive" });
+      return;
+    }
+
+    const executionRemark: Remark = {
+        id: `rem_exec_${Date.now()}_${Math.random()}`,
+        text: `[ai-todo|pending] Execute the refined prompt to ${topic}`,
+        userId: userId,
+        timestamp: new Date().toISOString(),
+    };
+
+    const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
+    const docSnap = await getDoc(checklistDocRef);
+    if (!docSnap.exists()) {
+        toast({ title: "Error", description: "Checklist not found.", variant: "destructive" });
+        return;
+    }
+
+    const currentTasks = docSnap.data().tasks as Task[];
+    let updatedTaskWithNewRemark: Task | undefined;
+
+    const newTasks = currentTasks.map(t => {
+        if (t.id === taskToUpdate.id) {
+            updatedTaskWithNewRemark = {
+                ...t,
+                remarks: [...t.remarks, executionRemark],
+            };
+            return updatedTaskWithNewRemark;
+        }
+        return t;
+    });
+
+    if (!updatedTaskWithNewRemark) {
+         toast({ title: "Error", description: "Could not find the parent task to update.", variant: "destructive" });
+         return;
+    }
+    
+    await updateDoc(checklistDocRef, { tasks: newTasks });
+    
+    await handleExecuteAiTodo(updatedTaskWithNewRemark, executionRemark);
+
+  }, [activeChecklist, db, userId, handleExecuteAiTodo, toast]);
+
 
   const handleUploadDocuments = useCallback(async (files: FileList) => {
     if (!activeChecklist || !db || !storage || !auth) {
@@ -1221,6 +1267,7 @@ export default function Home() {
               checklist={activeChecklist}
               onUpdate={handleUpdateChecklist}
               onExecuteAiTodo={handleExecuteAiTodo}
+              onRunRefinedPrompt={handleRunRefinedPrompt}
               runningRemarkIds={runningRemarkIds}
             />
           </>
