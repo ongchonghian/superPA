@@ -34,7 +34,7 @@ export type SuggestChecklistNextStepsInput = z.infer<typeof SuggestChecklistNext
 const ChecklistSuggestionSchema = z.object({
     taskId: z.string().describe('The ID of the task for which the suggestion is being made.'),
     suggestion: z.string().describe('The suggested AI To-Do item, formatted as "[ai-todo|pending] {description}".'),
-    context: z.string().describe('A brief explanation of why this suggestion is being made, referencing the source remark(s) or to-do(s).'),
+    context: z.string().describe("A brief explanation of why this suggestion is being made, citing the specific remark, to-do, or context document (by name) that informed the suggestion."),
 });
 
 const InformationRequestSchema = z.object({
@@ -109,6 +109,7 @@ Your analysis must be exhaustive. For each task provided, perform the following 
 
 **MANDATORY RULES:**
 - **PRIMARY RULE: If a task's discussion history already contains \`[ai-todo|pending]\` or \`[ai-todo|running]\`, YOU MUST NOT generate any output for that \`taskId\`.**
+- **CITE YOUR SOURCES: In the 'context' field for every suggestion, you MUST cite your source. If based on a context document, name the file (e.g., 'Based on the "Project_Brief.md" document...'). If based on the task description or a user remark, state that.**
 - Your suggestions MUST be relevant to the \`taskDescription\` and within your stated capabilities. Do not just repeat examples from this prompt.
 - Your suggestions must not be functionally identical to any other AI-todo in the discussion history.
 - You MUST process every task according to these rules.

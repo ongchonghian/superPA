@@ -10,15 +10,16 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, WandSparkles, Lightbulb, MessageSquare } from 'lucide-react';
+import { Loader2, WandSparkles, Lightbulb, MessageSquare, BookOpenCheck } from 'lucide-react';
 import type { Task } from '@/lib/types';
-import type { ChecklistSuggestion } from '@/ai/flows/suggest-checklist-next-steps';
+import type { ChecklistSuggestion, InformationRequest } from '@/ai/flows/suggest-checklist-next-steps';
 import { ScrollArea } from './ui/scroll-area';
 
 interface ChecklistAiSuggestionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   suggestions: ChecklistSuggestion[];
+  informationRequests: InformationRequest[];
   isLoading: boolean;
   tasks: Task[];
   onAddSuggestion: (suggestion: ChecklistSuggestion) => void;
@@ -29,7 +30,8 @@ interface ChecklistAiSuggestionDialogProps {
 export function ChecklistAiSuggestionDialog({ 
   open, 
   onOpenChange, 
-  suggestions, 
+  suggestions,
+  informationRequests,
   isLoading, 
   tasks,
   onAddSuggestion,
@@ -37,6 +39,10 @@ export function ChecklistAiSuggestionDialog({
   onProvideInfo
 }: ChecklistAiSuggestionDialogProps) {
   
+  const getTaskDescription = (taskId: string) => {
+    return tasks.find(t => t.id === taskId)?.description || 'Unknown Task';
+  }
+
   const suggestionsByTask = (suggestions || []).reduce((acc, suggestion) => {
     if (!acc[suggestion.taskId]) {
       acc[suggestion.taskId] = [];
@@ -45,11 +51,16 @@ export function ChecklistAiSuggestionDialog({
     return acc;
   }, {} as Record<string, ChecklistSuggestion[]>);
 
-  const getTaskDescription = (taskId: string) => {
-    return tasks.find(t => t.id === taskId)?.description || 'Unknown Task';
-  }
+  const requestsByTask = (informationRequests || []).reduce((acc, request) => {
+    if (!acc[request.taskId]) {
+      acc[request.taskId] = [];
+    }
+    acc[request.taskId].push(request);
+    return acc;
+  }, {} as Record<string, InformationRequest[]>);
 
-  const hasSuggestions = Object.keys(suggestionsByTask).length > 0;
+  const hasSuggestions = suggestions && suggestions.length > 0;
+  const hasRequests = informationRequests && informationRequests.length > 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -60,7 +71,7 @@ export function ChecklistAiSuggestionDialog({
             Checklist AI Analysis
           </DialogTitle>
           <DialogDescription>
-            AI has analyzed incomplete tasks. Approve suggestions to add them as AI To-Dos.
+            AI has analyzed incomplete tasks. Approve suggestions to add them as AI To-Dos, or answer questions to provide more context.
           </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[60vh] -mx-6">
@@ -69,37 +80,73 @@ export function ChecklistAiSuggestionDialog({
                     <div className="flex items-center justify-center p-8 rounded-md bg-secondary/50">
                         <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     </div>
-                ) : hasSuggestions ? (
+                ) : (hasSuggestions || hasRequests) ? (
                     <div className="space-y-8">
-                        <div className="space-y-4">
-                            <h3 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
-                              <Lightbulb className="h-4 w-4 text-accent"/>
-                              AI To-Do Suggestions
-                            </h3>
-                            {Object.entries(suggestionsByTask).map(([taskId, taskSuggestions]) => (
-                                <div key={taskId} className="p-4 rounded-lg border bg-background space-y-3">
-                                    <h4 className="text-sm font-semibold text-foreground">
-                                        For task: <span className="font-normal italic">&quot;{getTaskDescription(taskId)}&quot;</span>
-                                    </h4>
-                                    <ul className="space-y-3 pt-2">
-                                    {taskSuggestions.map((suggestion, index) => (
-                                        <li key={index} className="flex items-start justify-between gap-3 animate-in fade-in duration-300">
-                                        <div className="flex items-start gap-3 flex-1">
-                                            <WandSparkles className="h-4 w-4 mt-0.5 shrink-0 text-accent"/>
-                                            <div className="flex flex-col">
+                        {hasSuggestions && (
+                          <div className="space-y-4">
+                              <h3 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
+                                <Lightbulb className="h-4 w-4 text-accent"/>
+                                AI To-Do Suggestions
+                              </h3>
+                              {Object.entries(suggestionsByTask).map(([taskId, taskSuggestions]) => (
+                                  <div key={taskId} className="p-4 rounded-lg border bg-background space-y-3">
+                                      <h4 className="text-sm font-semibold text-foreground">
+                                          For task: <span className="font-normal italic">&quot;{getTaskDescription(taskId)}&quot;</span>
+                                      </h4>
+                                      <ul className="space-y-3 pt-2">
+                                      {taskSuggestions.map((suggestion, index) => (
+                                          <li key={index} className="flex flex-col animate-in fade-in duration-300 bg-muted/30 p-3 rounded-lg">
+                                            <div className="flex items-start justify-between gap-3">
+                                              <div className="flex items-start gap-3 flex-1">
+                                                <WandSparkles className="h-4 w-4 mt-0.5 shrink-0 text-accent"/>
                                                 <span className="text-sm text-secondary-foreground break-words font-medium">{suggestion.suggestion}</span>
-                                                <span className="text-xs text-muted-foreground mt-1 italic">&quot;{suggestion.context}&quot;</span>
+                                              </div>
+                                              <Button size="sm" variant="outline" onClick={() => onAddSuggestion(suggestion)}>
+                                                  Add
+                                              </Button>
                                             </div>
-                                        </div>
-                                        <Button size="sm" variant="outline" onClick={() => onAddSuggestion(suggestion)}>
-                                            Add
-                                        </Button>
-                                        </li>
-                                    ))}
-                                    </ul>
-                                </div>
-                            ))}
-                        </div>
+                                            <div className="flex items-start gap-2 mt-3 pt-2 border-t border-border/20 pl-1">
+                                                <BookOpenCheck className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                                                <div className="flex flex-col">
+                                                    <span className="text-xs font-semibold text-muted-foreground">AI&apos;s Reasoning</span>
+                                                    <span className="text-xs text-muted-foreground italic">{suggestion.context}</span>
+                                                </div>
+                                            </div>
+                                          </li>
+                                      ))}
+                                      </ul>
+                                  </div>
+                              ))}
+                          </div>
+                        )}
+                        {hasRequests && (
+                           <div className="space-y-4">
+                              <h3 className="text-base font-semibold flex items-center gap-2 text-foreground/90">
+                                <MessageSquare className="h-4 w-4 text-accent"/>
+                                Needs More Information
+                              </h3>
+                              {Object.entries(requestsByTask).map(([taskId, taskRequests]) => (
+                                  <div key={taskId} className="p-4 rounded-lg border bg-background space-y-3">
+                                      <h4 className="text-sm font-semibold text-foreground">
+                                          For task: <span className="font-normal italic">&quot;{getTaskDescription(taskId)}&quot;</span>
+                                      </h4>
+                                      <ul className="space-y-3 pt-2">
+                                      {taskRequests.map((request, index) => (
+                                          <li key={index} className="flex items-center justify-between gap-3 animate-in fade-in duration-300">
+                                            <div className="flex items-start gap-3 flex-1">
+                                                <MessageSquare className="h-4 w-4 mt-0.5 shrink-0 text-accent/80"/>
+                                                <span className="text-sm text-secondary-foreground break-words">{request.request}</span>
+                                            </div>
+                                            <Button size="sm" variant="outline" onClick={() => onProvideInfo(request.taskId)}>
+                                                Answer
+                                            </Button>
+                                          </li>
+                                      ))}
+                                      </ul>
+                                  </div>
+                              ))}
+                          </div>
+                        )}
                     </div>
                 ) : (
                     <div className="text-center text-sm text-muted-foreground py-8">
