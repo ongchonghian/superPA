@@ -135,7 +135,7 @@ export default function Home() {
     setFirestoreError(false); // Reset on each attempt
     setFirestorePermissionError(false); // Reset on each attempt
 
-    const q = query(collection(db, 'checklists'));
+    const q = query(collection(db, 'checklists'), where('ownerId', '==', userId));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
@@ -1134,7 +1134,7 @@ export default function Home() {
         progress={progress}
         hasActiveChecklist={!!activeChecklist}
       />
-      <main className="p-4 sm:p-6 lg:p-8">
+      <main className="p-4 sm:p-6 lg:p-8 no-print">
         {activeChecklist ? (
           <>
             <DocumentManager 
@@ -1250,6 +1250,8 @@ export default function Home() {
     </div>
   );
 }
+    
+
     
 
     
