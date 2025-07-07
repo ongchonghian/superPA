@@ -350,6 +350,14 @@ export default function Home() {
         batch.delete(checklistRef);
         await batch.commit();
 
+        // If the deleted checklist was the active one, switch to another.
+        // This makes the UI update feel instantaneous.
+        if (activeChecklistId === id) {
+          const remainingChecklists = checklistMetas.filter(c => c.id !== id);
+          const newActiveId = remainingChecklists.length > 0 ? remainingChecklists[0].id : null;
+          setActiveChecklistId(newActiveId);
+        }
+
         deleteToast.update({ id: deleteToast.id, title: "Success", description: `Checklist "${checklistData.name}" deleted.` });
     } catch (error: any) {
         console.error("Error deleting checklist:", error);
@@ -357,7 +365,7 @@ export default function Home() {
     } finally {
         setChecklistToDelete(null); // Close the dialog
     }
-  }, [db, storage, toast]);
+  }, [db, storage, toast, activeChecklistId, checklistMetas]);
   
   const handleInitiateImport = (mode: 'new' | 'current') => {
     setImportMode(mode);
@@ -525,10 +533,9 @@ export default function Home() {
 
         if (importMode === 'new') {
             const checklistsRef = collection(db, 'checklists');
-            const q = query(checklistsRef, where('ownerId', '==', userId));
+            const q = query(checklistsRef, where('ownerId', '==', userId), where('name', '==', newChecklistName));
             const querySnapshot = await getDocs(q);
-            const allUserChecklists = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
-            const existingChecklist = allUserChecklists.find(meta => meta.name.trim().toLowerCase() === newChecklistName.toLowerCase());
+            const existingChecklist = querySnapshot.docs.length > 0 ? { id: querySnapshot.docs[0].id, name: querySnapshot.docs[0].data().name as string } : null;
 
             if (existingChecklist) {
               setImportConflict({ conflictingId: existingChecklist.id, name: newChecklistName, tasks: newTasks });
@@ -1152,147 +1159,149 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background">
-      <input
-        type="file"
-        ref={fileInputRef}
-        onChange={handleFileSelectedForImport}
-        accept=".md"
-        className="hidden"
-      />
-      <ChecklistHeader
-        checklists={checklistMetas}
-        activeChecklistId={activeChecklistId}
-        onSwitch={handleSwitchChecklist}
-        onAdd={() => setIsNewChecklistDialogOpen(true)}
-        onDeleteRequest={handleRequestDeleteChecklist}
-        onInitiateImport={handleInitiateImport}
-        onExportMarkdown={handleExportMarkdown}
-        onExportPdf={handleExportPdf}
-        onExportConfluence={handleExportConfluence}
-        onGetAiSuggestions={fetchAiSuggestions}
-        progress={progress}
-        hasActiveChecklist={!!activeChecklist}
-      />
-      <main className="p-4 sm:p-6 lg:p-8 print:p-0">
-        {activeChecklist ? (
-          <>
-            <DocumentManager 
-              documents={documents}
-              onUpload={handleUploadDocuments}
-              isUploading={isUploading}
-              storageCorsError={storageCorsError}
-              onDelete={handleDeleteDocument}
-            />
-            <TaskTable
-              checklist={activeChecklist}
-              onUpdate={handleUpdateChecklist}
-              onExecuteAiTodo={handleExecuteAiTodo}
-              runningRemarkIds={runningRemarkIds}
-            />
-          </>
-        ) : (
-          <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border text-center h-[60vh] no-print">
-            <h2 className="text-xl font-semibold text-foreground">No Checklist Selected</h2>
-            <p className="mt-2 text-muted-foreground">Create a new checklist or import one to get started.</p>
-            <button
-              onClick={() => setIsNewChecklistDialogOpen(true)}
-              className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
-            >
-              Create Checklist
-            </button>
+      <main className="p-4 sm:p-6 lg:p-8 print-p-0">
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelectedForImport}
+          accept=".md"
+          className="hidden"
+        />
+        <ChecklistHeader
+          checklists={checklistMetas}
+          activeChecklistId={activeChecklistId}
+          onSwitch={handleSwitchChecklist}
+          onAdd={() => setIsNewChecklistDialogOpen(true)}
+          onDeleteRequest={handleRequestDeleteChecklist}
+          onInitiateImport={handleInitiateImport}
+          onExportMarkdown={handleExportMarkdown}
+          onExportPdf={handleExportPdf}
+          onExportConfluence={handleExportConfluence}
+          onGetAiSuggestions={fetchAiSuggestions}
+          progress={progress}
+          hasActiveChecklist={!!activeChecklist}
+        />
+        <main className="p-4 sm:p-6 lg:p-8 print:p-0">
+          {activeChecklist ? (
+            <>
+              <DocumentManager 
+                documents={documents}
+                onUpload={handleUploadDocuments}
+                isUploading={isUploading}
+                storageCorsError={storageCorsError}
+                onDelete={handleDeleteDocument}
+              />
+              <TaskTable
+                checklist={activeChecklist}
+                onUpdate={handleUpdateChecklist}
+                onExecuteAiTodo={handleExecuteAiTodo}
+                runningRemarkIds={runningRemarkIds}
+              />
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-border text-center h-[60vh] no-print">
+              <h2 className="text-xl font-semibold text-foreground">No Checklist Selected</h2>
+              <p className="mt-2 text-muted-foreground">Create a new checklist or import one to get started.</p>
+              <button
+                onClick={() => setIsNewChecklistDialogOpen(true)}
+                className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+              >
+                Create Checklist
+              </button>
+            </div>
+          )}
+        </main>
+
+        <div className="hidden">
+          <div ref={confluenceExportRef}>
+              <ChecklistConfluenceView checklist={activeChecklist} />
           </div>
-        )}
-      </main>
-
-      <div className="hidden">
-        <div ref={confluenceExportRef}>
-            <ChecklistConfluenceView checklist={activeChecklist} />
         </div>
-      </div>
 
-      <div className="print-container">
-        {activeChecklist && <ChecklistPrintView checklist={activeChecklist} />}
-      </div>
-      <NewChecklistDialog
-        open={isNewChecklistDialogOpen}
-        onOpenChange={setIsNewChecklistDialogOpen}
-        onSave={(name) => handleSaveNewChecklist(name)}
-      />
-      <ImportConflictDialog
-        open={!!importConflict}
-        onOpenChange={(isOpen) => !isOpen && setImportConflict(null)}
-        checklistName={importConflict?.name || ''}
-        onOverwrite={() => {
-          if (importConflict) {
-            handleOverwriteChecklist(importConflict.conflictingId, importConflict.name, importConflict.tasks);
-            setImportConflict(null);
-          }
-        }}
-        onAppend={() => {
-          if (importConflict) {
-            handleAppendToChecklist(importConflict.conflictingId, importConflict.tasks);
-            setImportConflict(null);
-          }
-        }}
-      />
-       <ChecklistAiSuggestionDialog
-        open={isAiDialogOpen}
-        onOpenChange={setIsAiDialogOpen}
-        suggestions={aiAnalysisResult?.suggestions || []}
-        informationRequests={aiAnalysisResult?.informationRequests || []}
-        isLoading={isAiLoading}
-        tasks={activeChecklist?.tasks || []}
-        onAddSuggestion={handleAddSuggestionAsRemark}
-        onRegenerate={fetchAiSuggestions}
-        onProvideInfo={handleProvideInfo}
-      />
-      <TaskDialog
-        task={dialogTask}
-        open={isTaskDialogOpen}
-        onOpenChange={setIsTaskDialogOpen}
-        onSave={handleSaveTask}
-      />
-      <TaskRemarksSheet
-        task={remarksTask}
-        open={isRemarksSheetOpen}
-        onOpenChange={setIsRemarksSheetOpen}
-        onUpdateTask={handleUpdateTask}
-        assignees={assignees}
-        userId={userId || undefined}
-      />
-      <AlertDialog
-        open={!!checklistToDelete}
-        onOpenChange={(isOpen) => !isOpen && setChecklistToDelete(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the
-              checklist &quot;{checklistToDelete?.name}&quot; and all of its associated tasks and documents.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive hover:bg-destructive/90"
-              onClick={() => {
-                if (checklistToDelete) {
-                  handleDeleteChecklist(checklistToDelete.id);
-                }
-              }}
-            >
-              Delete Checklist
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      <ReportViewerDialog
-        open={isReportViewerOpen}
-        onOpenChange={setIsReportViewerOpen}
-        content={reportContent}
-        isLoading={isReportLoading}
-      />
+        <div className="print-container">
+          {activeChecklist && <ChecklistPrintView checklist={activeChecklist} />}
+        </div>
+        <NewChecklistDialog
+          open={isNewChecklistDialogOpen}
+          onOpenChange={setIsNewChecklistDialogOpen}
+          onSave={(name) => handleSaveNewChecklist(name)}
+        />
+        <ImportConflictDialog
+          open={!!importConflict}
+          onOpenChange={(isOpen) => !isOpen && setImportConflict(null)}
+          checklistName={importConflict?.name || ''}
+          onOverwrite={() => {
+            if (importConflict) {
+              handleOverwriteChecklist(importConflict.conflictingId, importConflict.name, importConflict.tasks);
+              setImportConflict(null);
+            }
+          }}
+          onAppend={() => {
+            if (importConflict) {
+              handleAppendToChecklist(importConflict.conflictingId, importConflict.tasks);
+              setImportConflict(null);
+            }
+          }}
+        />
+        <ChecklistAiSuggestionDialog
+          open={isAiDialogOpen}
+          onOpenChange={setIsAiDialogOpen}
+          suggestions={aiAnalysisResult?.suggestions || []}
+          informationRequests={aiAnalysisResult?.informationRequests || []}
+          isLoading={isAiLoading}
+          tasks={activeChecklist?.tasks || []}
+          onAddSuggestion={handleAddSuggestionAsRemark}
+          onRegenerate={fetchAiSuggestions}
+          onProvideInfo={handleProvideInfo}
+        />
+        <TaskDialog
+          task={dialogTask}
+          open={isTaskDialogOpen}
+          onOpenChange={setIsTaskDialogOpen}
+          onSave={handleSaveTask}
+        />
+        <TaskRemarksSheet
+          task={remarksTask}
+          open={isRemarksSheetOpen}
+          onOpenChange={setIsRemarksSheetOpen}
+          onUpdateTask={handleUpdateTask}
+          assignees={assignees}
+          userId={userId || undefined}
+        />
+        <AlertDialog
+          open={!!checklistToDelete}
+          onOpenChange={(isOpen) => !isOpen && setChecklistToDelete(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the
+                checklist &quot;{checklistToDelete?.name}&quot; and all of its associated tasks and documents.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive hover:bg-destructive/90"
+                onClick={() => {
+                  if (checklistToDelete) {
+                    handleDeleteChecklist(checklistToDelete.id);
+                  }
+                }}
+              >
+                Delete Checklist
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+        <ReportViewerDialog
+          open={isReportViewerOpen}
+          onOpenChange={setIsReportViewerOpen}
+          content={reportContent}
+          isLoading={isReportLoading}
+        />
+      </main>
     </div>
   );
 }
