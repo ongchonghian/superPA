@@ -875,19 +875,37 @@ export default function Home() {
     try {
         const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
         
-        // Use a transaction or fetch-and-update to prevent race conditions
+        // Fetch latest data, add the new remark if it's not there, and set to running in one go.
         const docSnapBeforeRunning = await getDoc(checklistDocRef);
         if (!docSnapBeforeRunning.exists()) throw new Error("Checklist not found");
         const tasksBeforeRunning = docSnapBeforeRunning.data().tasks as Task[];
         
+        let taskForAi: Task | undefined;
+
         const tasksWithRunning = tasksBeforeRunning.map(t => {
             if (t.id !== task.id) return t;
-            return {
-                ...t,
-                remarks: t.remarks.map(r => r.id === remarkToExecute.id ? { ...r, text: r.text.replace('[ai-todo|pending]', '[ai-todo|running]') } : r)
-            };
+
+            const remarkExists = t.remarks.some(r => r.id === remarkToExecute.id);
+            let newRemarks = [...t.remarks];
+
+            if (!remarkExists) {
+                newRemarks.push(remarkToExecute);
+            }
+            
+            newRemarks = newRemarks.map(r => 
+                r.id === remarkToExecute.id 
+                    ? { ...r, text: r.text.replace('[ai-todo|pending]', '[ai-todo|running]') } 
+                    : r
+            );
+
+            taskForAi = { ...t, remarks: newRemarks };
+            return taskForAi;
         });
         await updateDoc(checklistDocRef, { tasks: tasksWithRunning });
+        
+        if (!taskForAi) {
+            throw new Error("Could not find task to prepare for AI.");
+        }
 
         // Prepare and call executor flow
         const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|(pending|running)\]\s*/, '').trim();
@@ -895,8 +913,8 @@ export default function Home() {
         
         const result = await executeAiTodo({
             aiTodoText,
-            taskDescription: task.description,
-            discussionHistory: task.remarks.map(r => r.text).join('\n---\n'),
+            taskDescription: taskForAi.description,
+            discussionHistory: taskForAi.remarks.map(r => r.text).join('\n---\n'),
             contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
         });
 
@@ -993,36 +1011,10 @@ export default function Home() {
         userId: userId,
         timestamp: new Date().toISOString(),
     };
-
-    const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
-    const docSnap = await getDoc(checklistDocRef);
-    if (!docSnap.exists()) {
-        toast({ title: "Error", description: "Checklist not found.", variant: "destructive" });
-        return;
-    }
-
-    const currentTasks = docSnap.data().tasks as Task[];
-    let updatedTaskWithNewRemark: Task | undefined;
-
-    const newTasks = currentTasks.map(t => {
-        if (t.id === taskToUpdate.id) {
-            updatedTaskWithNewRemark = {
-                ...t,
-                remarks: [...t.remarks, executionRemark],
-            };
-            return updatedTaskWithNewRemark;
-        }
-        return t;
-    });
-
-    if (!updatedTaskWithNewRemark) {
-         toast({ title: "Error", description: "Could not find the parent task to update.", variant: "destructive" });
-         return;
-    }
     
-    await updateDoc(checklistDocRef, { tasks: newTasks });
-    
-    await handleExecuteAiTodo(updatedTaskWithNewRemark, executionRemark);
+    // Directly call the execution function with the in-memory remark.
+    // The execution function is now responsible for adding it to the database.
+    await handleExecuteAiTodo(taskToUpdate, executionRemark);
 
   }, [activeChecklist, db, userId, handleExecuteAiTodo, toast]);
 
@@ -1246,7 +1238,7 @@ export default function Home() {
         progress={progress}
         hasActiveChecklist={!!activeChecklist}
       />
-      <main className="p-4 sm:p-6 lg:p-8 print:p-0">
+      <main className="p-4 sm:p-6 lg:p-8">
         <input
           type="file"
           ref={fileInputRef}
