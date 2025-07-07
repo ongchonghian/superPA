@@ -872,17 +872,20 @@ export default function Home() {
     setRunningRemarkIds(prev => [...prev, remarkToExecute.id]);
     const executionToast = toast({ title: "AI Execution Started", description: "The AI is now working on your to-do." });
 
+    let tasksWithRunning: Task[] = [];
+    
     try {
         const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
         
-        // Fetch latest data, add the new remark if it's not there, and set to running in one go.
+        // This is a critical section. We base all future operations on this `tasksWithRunning`
+        // state to avoid race conditions from re-fetching from the database.
         const docSnapBeforeRunning = await getDoc(checklistDocRef);
         if (!docSnapBeforeRunning.exists()) throw new Error("Checklist not found");
         const tasksBeforeRunning = docSnapBeforeRunning.data().tasks as Task[];
         
         let taskForAi: Task | undefined;
 
-        const tasksWithRunning = tasksBeforeRunning.map(t => {
+        tasksWithRunning = tasksBeforeRunning.map(t => {
             if (t.id !== task.id) return t;
 
             const remarkExists = t.remarks.some(r => r.id === remarkToExecute.id);
@@ -925,7 +928,7 @@ export default function Home() {
         const resultRef = storageRef(storage, resultPath);
         await uploadBytes(resultRef, markdownBlob);
 
-        // Update checklist with result
+        // Update checklist with result using the in-memory `tasksWithRunning` as the source of truth.
         const resultRemarkText = `AI execution complete. [View results](storage://${resultPath})\n\n**Summary:**\n${result.summary}`;
         const resultRemark: Remark = {
             id: `rem_res_${Date.now()}`,
@@ -934,16 +937,18 @@ export default function Home() {
             timestamp: new Date().toISOString()
         };
         
-        const docSnapBeforeCompleted = await getDoc(checklistDocRef);
-        if (!docSnapBeforeCompleted.exists()) throw new Error("Checklist not found");
-        const currentTasks = docSnapBeforeCompleted.data().tasks as Task[];
-
-        const finalTasks = currentTasks.map(t => {
+        const finalTasks = tasksWithRunning.map(t => {
             if (t.id !== task.id) return t;
+            
+            // Find the remark we just executed and update its status to 'completed'.
             const updatedRemarks = t.remarks.map(r => {
-                if (r.id === remarkToExecute.id) return { ...r, text: r.text.replace('[ai-todo|running]', '[ai-todo|completed]') };
+                if (r.id === remarkToExecute.id) {
+                    return { ...r, text: r.text.replace('[ai-todo|running]', '[ai-todo|completed]') };
+                }
                 return r;
             });
+
+            // Add the new result remark.
             return {
                 ...t,
                 remarks: [...updatedRemarks, resultRemark]
