@@ -157,7 +157,6 @@ const executeAiTodoFlow = ai.defineFlow(
     const isPromptGeneration = /generate a( refined)? prompt|design a prompt/i.test(input.aiTodoText);
 
     if (isPromptGeneration) {
-        // Corrected a typo here from aiTodotext to aiTodoText
         const topicMatch = input.aiTodoText.match(/to (.*)/i);
         const topic = topicMatch ? topicMatch[1] : input.aiTodoText;
 
@@ -170,8 +169,7 @@ const executeAiTodoFlow = ai.defineFlow(
             throw new Error("Failed to generate refined prompt.");
         }
         
-        // Corrected the string termination error here
-        const keyPrinciplesString = output.keyPrinciplesApplied.map(p => `- ${p}`).join('');
+        const keyPrinciplesString = output.keyPrinciplesApplied.map(p => `- ${p}`).join('\n');
         
         const resultMarkdown = [
             '### Refined Prompt',
@@ -184,7 +182,7 @@ const executeAiTodoFlow = ai.defineFlow(
             '',
             '### Key Principles Applied',
             keyPrinciplesString,
-        ].join('');
+        ].join('\n');
         
         const summary = `Generated a refined prompt for: ${topic}`;
 
