@@ -21,6 +21,7 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
+  getDocs,
   arrayUnion,
   arrayRemove,
   writeBatch,
@@ -381,8 +382,8 @@ export default function Home() {
         if (docSnap.exists()) {
             const existingChecklist = docSnap.data() as Omit<Checklist, 'id'>;
             
-            const existingTaskDescriptions = new Set(existingChecklist.tasks.map(t => t.description.trim()));
-            const tasksToAppend = tasks.filter(t => !existingTaskDescriptions.has(t.description.trim()));
+            const existingTaskDescriptions = new Set(existingChecklist.tasks.map(t => t.description.trim().toLowerCase()));
+            const tasksToAppend = tasks.filter(t => !existingTaskDescriptions.has(t.description.trim().toLowerCase()));
 
             if (tasksToAppend.length > 0) {
               const updatedTasks = [...existingChecklist.tasks, ...tasksToAppend];
@@ -399,7 +400,7 @@ export default function Home() {
   }, [db, handleUpdateChecklist, toast]);
 
   const handleFileSelectedForImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!importMode) return;
+    if (!importMode || !userId || !db) return;
 
     const file = event.target.files?.[0];
     if (!file) {
@@ -523,7 +524,12 @@ export default function Home() {
         if (currentTask) { newTasks.push(currentTask); }
 
         if (importMode === 'new') {
-            const existingChecklist = checklistMetas.find(meta => meta.name.trim().toLowerCase() === newChecklistName.toLowerCase());
+            const checklistsRef = collection(db, 'checklists');
+            const q = query(checklistsRef, where('ownerId', '==', userId));
+            const querySnapshot = await getDocs(q);
+            const allUserChecklists = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
+            const existingChecklist = allUserChecklists.find(meta => meta.name.trim().toLowerCase() === newChecklistName.toLowerCase());
+
             if (existingChecklist) {
               setImportConflict({ conflictingId: existingChecklist.id, name: newChecklistName, tasks: newTasks });
               return;
