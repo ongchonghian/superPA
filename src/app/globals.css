@@ -59,21 +59,33 @@
 }
 
 @media print {
-  body {
+  body, html {
+    visibility: hidden;
     background-color: white !important;
+    font-size: 10pt;
+  }
+  .print-container, .print-container * {
+    visibility: visible;
+  }
+  .print-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
   }
   .no-print {
     display: none !important;
   }
-  main {
-    padding: 0 !important;
-    margin: 0 !important;
+  .page-break-before {
+    page-break-before: always;
   }
-  .print-only {
-    display: block !important;
+  .print-badge {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    border-width: 1px !important;
   }
   @page {
     size: auto;
-    margin: 0.5in;
+    margin: 0.75in;
   }
 }

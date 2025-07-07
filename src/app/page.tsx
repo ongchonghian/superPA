@@ -15,7 +15,6 @@ import { ref as storageRef, uploadBytes, deleteObject, getBytes } from 'firebase
 import {
   collection,
   query,
-  where,
   onSnapshot,
   doc,
   addDoc,
@@ -48,6 +47,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { ReportViewerDialog } from '@/components/report-viewer-dialog';
+import { ChecklistPrintView } from '@/components/checklist-print-view';
 
 
 export default function Home() {
@@ -135,7 +135,7 @@ export default function Home() {
     setFirestoreError(false); // Reset on each attempt
     setFirestorePermissionError(false); // Reset on each attempt
 
-    const q = query(collection(db, 'checklists'), where('ownerId', '==', userId));
+    const q = query(collection(db, 'checklists'));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
@@ -1164,8 +1164,8 @@ export default function Home() {
           </div>
         )}
       </main>
-      <div className="print-only hidden">
-        {activeChecklist && <TaskTable checklist={activeChecklist} onUpdate={() => {}} onExecuteAiTodo={() => {}} runningRemarkIds={[]} />}
+      <div className="print-container">
+        {activeChecklist && <ChecklistPrintView checklist={activeChecklist} />}
       </div>
       <NewChecklistDialog
         open={isNewChecklistDialogOpen}
