@@ -297,7 +297,7 @@ export default function Home() {
     }
 
     return null;
-  }, [db, userId]);
+  }, [userId]);
 
   const handleSaveNewChecklist = useCallback(async (name: string, tasks: Task[] = []) => {
     if (!name || !userId) return;
@@ -1244,7 +1244,7 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="print-container">
+      <div className="hidden print:block">
         {activeChecklist && <ChecklistPrintView checklist={activeChecklist} />}
       </div>
       <NewChecklistDialog
