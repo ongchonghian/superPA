@@ -516,7 +516,7 @@ export default function Home() {
         if (currentTask) { newTasks.push(currentTask); }
 
         if (importMode === 'new') {
-            const existingChecklist = checklistMetas.find(meta => meta.name === newChecklistName);
+            const existingChecklist = checklistMetas.find(meta => meta.name.trim().toLowerCase() === newChecklistName.toLowerCase());
             if (existingChecklist) {
               setImportConflict({ conflictingId: existingChecklist.id, name: newChecklistName, tasks: newTasks });
               return;
@@ -1162,7 +1162,7 @@ export default function Home() {
         progress={progress}
         hasActiveChecklist={!!activeChecklist}
       />
-      <main className="p-4 sm:p-6 lg:p-8 no-print">
+      <main className="p-4 sm:p-6 lg:p-8 print:hidden">
         {activeChecklist ? (
           <>
             <DocumentManager 
