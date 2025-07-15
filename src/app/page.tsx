@@ -263,6 +263,24 @@ export default function Home() {
       window.removeEventListener('view-report', handleViewReport);
     };
   }, [storage, toast]);
+  
+  const handleAiError = (error: any, toastId?: string) => {
+    console.error("AI execution failed:", error);
+    let title = "AI Error";
+    let description = "The AI could not complete the task. See the console for details.";
+
+    const errorMessage = error.message || '';
+    if (errorMessage.includes('503') || errorMessage.toLowerCase().includes('overloaded')) {
+        title = "AI Model Overloaded";
+        description = "The AI model is currently experiencing high demand. Please try again in a few moments.";
+    }
+
+    if (toastId) {
+        toast.update(toastId, { title, description, variant: "destructive" });
+    } else {
+        toast({ title, description, variant: "destructive" });
+    }
+  };
 
   const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
     if (!db) return;
@@ -771,12 +789,7 @@ export default function Home() {
         });
       }
     } catch (error) {
-      console.error('Checklist AI suggestion failed:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to generate suggestions. Please try again.',
-        variant: 'destructive',
-      });
+      handleAiError(error);
       setAiAnalysisResult(null); 
     } finally {
       setIsAiLoading(false);
@@ -834,37 +847,29 @@ export default function Home() {
   const handleExecuteAiTodo = useCallback(async (task: Task, remarkToExecute: Remark) => {
     if (!activeChecklist || !db || !storage) return;
 
-    setRunningRemarkIds(prev => [...prev, remarkToExecute.id]);
     const executionToast = toast({ title: "AI Execution Started", description: "The AI is now working on your to-do." });
+    setRunningRemarkIds(prev => [...prev, remarkToExecute.id]);
 
-    // This is a critical section. We base all future operations on the current in-memory
-    // state to avoid race conditions from re-fetching from the database.
-    let tasksWithRunning: Task[] = [];
-    let taskForAi: Task | undefined;
-
-    tasksWithRunning = activeChecklist.tasks.map(t => {
+    let tasksWithRunning = activeChecklist.tasks.map(t => {
       if (t.id !== task.id) return t;
-
-      let newRemarks = t.remarks.map(r => 
+      const newRemarks = t.remarks.map(r => 
           r.id === remarkToExecute.id 
-              ? { ...r, text: r.text.replace(/\[(ai-todo|prompt-execution)\|pending\]/, '[$1|running]') } 
+              ? { ...r, text: r.text.replace(/\[ai-todo\|pending\]/, '[ai-todo|running]') } 
               : r
       );
-
-      taskForAi = { ...t, remarks: newRemarks };
-      return taskForAi;
+      return { ...t, remarks: newRemarks };
     });
 
     try {
         const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
         await updateDoc(checklistDocRef, { tasks: tasksWithRunning });
         
+        const taskForAi = tasksWithRunning.find(t => t.id === task.id);
         if (!taskForAi) {
             throw new Error("Could not find task to prepare for AI.");
         }
 
-        // Prepare and call executor flow
-        const aiTodoText = remarkToExecute.text.replace(/^\[(ai-todo|prompt-execution)\|(pending|running)\]\s*/, '').trim();
+        const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|(pending|running)\]\s*/, '').trim();
         const contextDocuments = await getContextDocumentsForAi();
         
         const result = await executeAiTodo({
@@ -874,14 +879,12 @@ export default function Home() {
             contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
         });
 
-        // Save result to storage
         const markdownBlob = new Blob([result.resultMarkdown], { type: 'text/markdown;charset=utf-8' });
         const resultFileName = `execution_result_${remarkToExecute.id}.md`;
         const resultPath = `checklists/${activeChecklist.id}/executions/${resultFileName}`;
         const resultRef = storageRef(storage, resultPath);
         await uploadBytes(resultRef, markdownBlob);
 
-        // Update checklist with result using the in-memory `tasksWithRunning` as the source of truth.
         const resultRemark: Remark = {
             id: `rem_res_${Date.now()}`,
             text: `AI execution complete. [View results](storage://${resultPath})\n\n**Summary:**\n${result.summary}`,
@@ -892,12 +895,11 @@ export default function Home() {
         const finalTasks = tasksWithRunning.map(t => {
             if (t.id !== task.id) return t;
             
-            const updatedRemarks = t.remarks.map(r => {
-                if (r.id === remarkToExecute.id) {
-                  return { ...r, text: r.text.replace('[ai-todo|running]', '[ai-todo|completed]') };
-                }
-                return r;
-            });
+            const updatedRemarks = t.remarks.map(r => 
+                r.id === remarkToExecute.id 
+                ? { ...r, text: r.text.replace('[ai-todo|running]', '[ai-todo|completed]') } 
+                : r
+            );
             
             return {
                 ...t,
@@ -909,10 +911,8 @@ export default function Home() {
         executionToast.update({ id: executionToast.id, title: "Execution Complete", description: "AI has finished the task and posted the results." });
 
     } catch (error: any) {
-        console.error("AI execution failed:", error);
-        executionToast.update({ id: executionToast.id, title: "Execution Failed", description: "The AI could not complete the task. See remarks for details.", variant: "destructive" });
+        handleAiError(error, executionToast.id);
         
-        // Safely revert status to failed and add an error remark
         try {
             const checklistDocRef = doc(db!, 'checklists', activeChecklist.id);
             const docSnap = await getDoc(checklistDocRef);
@@ -946,15 +946,21 @@ export default function Home() {
     } finally {
         setRunningRemarkIds(prev => prev.filter(id => id !== remarkToExecute.id));
     }
-  }, [activeChecklist, db, storage, getContextDocumentsForAi, toast]);
+  }, [activeChecklist, db, storage, getContextDocumentsForAi, toast, handleAiError]);
 
-  const handleRunRefinedPrompt = useCallback(async (taskToUpdate: Task, parentRemark: Remark, topic: string) => {
+  const handleRunRefinedPrompt = useCallback(async (taskToUpdate: Task, parentRemark: Remark) => {
     if (!activeChecklist || !db || !userId) {
-      toast({ title: "Error", description: "Cannot run prompt: context is missing.", variant: "destructive" });
-      return;
+        toast({ title: "Error", description: "Cannot run prompt: context is missing.", variant: "destructive" });
+        return;
     }
 
-    // 1. Create the new child to-do remark in memory
+    const topicMatch = parentRemark.text.match(/\*\*Summary:\*\*\nGenerated a refined prompt for: (.*)/s);
+    if (!topicMatch) {
+        toast({ title: "Error", description: "Could not extract topic from parent remark.", variant: "destructive" });
+        return;
+    }
+    const topic = topicMatch[1].trim();
+    
     const childRemark: Remark = {
         id: `rem_child_${Date.now()}_${Math.random()}`,
         parentId: parentRemark.id,
@@ -963,8 +969,8 @@ export default function Home() {
         timestamp: new Date().toISOString(),
     };
     
-    // 2. Add it to the task list and update the database
-    const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
+    setRunningRemarkIds(prev => [...prev, childRemark.id]);
+    const executionToast = toast({ title: "Prompt Execution Started", description: "The AI is now executing the refined prompt." });
     
     const tasksWithNewChildTodo = activeChecklist.tasks.map(t => {
         if (t.id === taskToUpdate.id) {
@@ -972,23 +978,21 @@ export default function Home() {
         }
         return t;
     });
-    
-    const taskForExecution = tasksWithNewChildTodo.find(t => t.id === taskToUpdate.id)!;
-    
-    setRunningRemarkIds(prev => [...prev, childRemark.id]);
-    const executionToast = toast({ title: "Prompt Execution Started", description: "The AI is now executing the refined prompt." });
-    
-    let tasksWithRunning = tasksWithNewChildTodo.map(t => {
-      if (t.id !== taskForExecution.id) return t;
-      const newRemarks = t.remarks.map(r => r.id === childRemark.id ? {...r, text: r.text.replace('[prompt-execution|pending]', '[prompt-execution|running]')} : r)
-      return { ...t, remarks: newRemarks };
+
+    const tasksWithRunning = tasksWithNewChildTodo.map(t => {
+        if (t.id !== taskToUpdate.id) return t;
+        const newRemarks = t.remarks.map(r => r.id === childRemark.id ? {...r, text: r.text.replace('[prompt-execution|pending]', '[prompt-execution|running]')} : r)
+        return { ...t, remarks: newRemarks };
     });
     
     try {
+        const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
         await updateDoc(checklistDocRef, { tasks: tasksWithRunning });
         
+        const taskForExecution = tasksWithRunning.find(t => t.id === taskToUpdate.id)!;
+        
         const refinedPromptResult = await executeAiTodo({
-            aiTodoText: childRemark.text,
+            aiTodoText: `Execute the refined prompt to ${topic}`,
             taskDescription: taskForExecution.description,
             discussionHistory: taskForExecution.remarks.map(r => r.text).join('\n---\n'),
             contextDocuments: await getContextDocumentsForAi(),
@@ -1000,11 +1004,11 @@ export default function Home() {
         const resultRef = storageRef(storage!, resultPath);
         await uploadBytes(resultRef, markdownBlob);
 
-        const resultText = `[prompt-execution|completed] ${refinedPromptResult.summary} [View results](storage://${resultPath})`;
+        const resultRemarkText = `[prompt-execution|completed] ${refinedPromptResult.summary} [View results](storage://${resultPath})`;
 
         const finalTasks = tasksWithRunning.map(t => {
-            if (t.id !== taskForExecution.id) return t;
-            const updatedRemarks = t.remarks.map(r => r.id === childRemark.id ? {...r, text: resultText } : r);
+            if (t.id !== taskToUpdate.id) return t;
+            const updatedRemarks = t.remarks.map(r => r.id === childRemark.id ? {...r, text: resultRemarkText } : r);
             return {...t, remarks: updatedRemarks };
         });
         
@@ -1012,13 +1016,16 @@ export default function Home() {
         executionToast.update({ id: executionToast.id, title: "Execution Complete", description: "Refined prompt has been executed." });
 
     } catch (error: any) {
-        console.error("Refined prompt execution failed:", error);
-        executionToast.update({ id: executionToast.id, title: "Execution Failed", description: "The AI could not execute the refined prompt.", variant: "destructive" });
+        handleAiError(error, executionToast.id);
         
         try {
-            const currentTasks = (await getDoc(checklistDocRef)).data()?.tasks as Task[];
+            const checklistDocRef = doc(db!, 'checklists', activeChecklist.id);
+            const docSnap = await getDoc(checklistDocRef);
+            if (!docSnap.exists()) return;
+            const currentTasks = docSnap.data()?.tasks as Task[];
+
             const finalTasks = currentTasks.map(t => {
-                if (t.id !== taskForExecution.id) return t;
+                if (t.id !== taskToUpdate.id) return t;
                 const updatedRemarks = t.remarks.map(r => 
                     r.id === childRemark.id 
                     ? { ...r, text: `[prompt-execution|failed] Error: ${error.message || 'An unknown error occurred.'}` }
@@ -1033,7 +1040,7 @@ export default function Home() {
     } finally {
         setRunningRemarkIds(prev => prev.filter(id => id !== childRemark.id));
     }
-  }, [activeChecklist, db, userId, storage, getContextDocumentsForAi, toast]);
+  }, [activeChecklist, db, userId, storage, getContextDocumentsForAi, toast, handleAiError]);
 
 
   const handleUploadDocuments = useCallback(async (files: FileList) => {
