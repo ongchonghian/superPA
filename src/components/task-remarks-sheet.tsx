@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -29,11 +30,12 @@ interface TaskRemarksSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onUpdateTask: (task: Task) => void;
+  onDeleteRemark: (task: Task, remark: Remark) => void;
   assignees: string[];
   userId?: string;
 }
 
-export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assignees = [], userId }: TaskRemarksSheetProps) {
+export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDeleteRemark, assignees = [], userId }: TaskRemarksSheetProps) {
     const [newRemark, setNewRemark] = useState('');
     const [mentionQuery, setMentionQuery] = useState('');
     const [isMentionPopoverOpen, setIsMentionPopoverOpen] = useState(false);
@@ -100,12 +102,10 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
         handleEditCancel();
     };
 
-    const handleDeleteRemark = (remarkId: string) => {
+    const handleDeleteClick = (remark: Remark) => {
         if (!task) return;
         if (window.confirm('Are you sure you want to delete this remark? This cannot be undone.')) {
-            const updatedRemarks = task.remarks.filter(r => r.id !== remarkId && r.parentId !== remarkId); // Also delete children
-            const updatedTask = { ...task, remarks: updatedRemarks };
-            onUpdateTask(updatedTask);
+            onDeleteRemark(task, remark);
         }
     };
 
@@ -217,13 +217,15 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, assig
                                                 {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
                                             </p>
                                         </div>
-                                        {remark.userId === userId && editingRemarkId !== remark.id && !isComplete && !remark.text.startsWith('[') &&(
+                                        {editingRemarkId !== remark.id && !isComplete && (
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditStart(remark)}>
-                                                    <Pencil className="h-3 w-3" />
-                                                    <span className="sr-only">Edit</span>
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleDeleteRemark(remark.id)}>
+                                                {remark.userId === userId && !remark.text.startsWith('[') && (
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditStart(remark)}>
+                                                        <Pencil className="h-3 w-3" />
+                                                        <span className="sr-only">Edit</span>
+                                                    </Button>
+                                                )}
+                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleDeleteClick(remark)}>
                                                     <Trash2 className="h-3 w-3" />
                                                     <span className="sr-only">Delete</span>
                                                 </Button>

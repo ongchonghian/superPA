@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
@@ -273,6 +274,9 @@ export default function Home() {
     if (errorMessage.includes('503') || errorMessage.toLowerCase().includes('overloaded')) {
         title = "AI Model Overloaded";
         description = "The AI model is currently experiencing high demand. Please try again in a few moments.";
+    } else if (errorMessage.toLowerCase().includes('api key not valid')) {
+        title = "Invalid API Key";
+        description = "Your Gemini API key is not valid. Please check your .env file.";
     }
 
     if (toastId) {
@@ -913,12 +917,9 @@ export default function Home() {
     } catch (error: any) {
         handleAiError(error, executionToast.id);
         
-        try {
-            const checklistDocRef = doc(db!, 'checklists', activeChecklist.id);
-            const docSnap = await getDoc(checklistDocRef);
-            if (!docSnap.exists()) throw new Error("Checklist disappeared during execution failure handling.");
-    
-            const currentTasks = docSnap.data().tasks as Task[];
+        // Use a local copy of tasks to revert state, avoiding another DB read which can be stale
+        const revertTasks = tasksWithRunning.map(t => {
+            if (t.id !== task.id) return t;
             
             const failureReasonRemark: Remark = {
                 id: `rem_fail_${Date.now()}`,
@@ -926,23 +927,24 @@ export default function Home() {
                 userId: 'system',
                 timestamp: new Date().toISOString()
             };
-    
-            const finalTasks = currentTasks.map(t => {
-                if (t.id !== task.id) return t;
-                
-                const updatedRemarks = t.remarks.map(r => {
-                    if (r.id === remarkToExecute.id) {
-                        return { ...r, text: r.text.replace(/\[ai-todo\|(pending|running)\]/, '[ai-todo|failed]') };
-                    }
-                    return r;
-                });
-    
-                return { ...t, remarks: [...updatedRemarks, failureReasonRemark] };
+
+            const updatedRemarks = t.remarks.map(r => {
+                if (r.id === remarkToExecute.id) {
+                    return { ...r, text: r.text.replace(/\[ai-todo\|(pending|running)\]/, '[ai-todo|failed]') };
+                }
+                return r;
             });
-            await updateDoc(checklistDocRef, { tasks: finalTasks });
+
+            return { ...t, remarks: [...updatedRemarks, failureReasonRemark] };
+        });
+        
+        try {
+            const checklistDocRef = doc(db!, 'checklists', activeChecklist.id);
+            await updateDoc(checklistDocRef, { tasks: revertTasks });
         } catch (revertError) {
             console.error("CRITICAL: Failed to revert AI To-Do status after an execution error.", revertError);
         }
+
     } finally {
         setRunningRemarkIds(prev => prev.filter(id => id !== remarkToExecute.id));
     }
@@ -1018,22 +1020,19 @@ export default function Home() {
     } catch (error: any) {
         handleAiError(error, executionToast.id);
         
+        const revertTasks = tasksWithRunning.map(t => {
+            if (t.id !== taskToUpdate.id) return t;
+            const updatedRemarks = t.remarks.map(r => 
+                r.id === childRemark.id 
+                ? { ...r, text: `[prompt-execution|failed] Error: ${error.message || 'An unknown error occurred.'}` }
+                : r
+            );
+            return { ...t, remarks: updatedRemarks };
+        });
+        
         try {
             const checklistDocRef = doc(db!, 'checklists', activeChecklist.id);
-            const docSnap = await getDoc(checklistDocRef);
-            if (!docSnap.exists()) return;
-            const currentTasks = docSnap.data()?.tasks as Task[];
-
-            const finalTasks = currentTasks.map(t => {
-                if (t.id !== taskToUpdate.id) return t;
-                const updatedRemarks = t.remarks.map(r => 
-                    r.id === childRemark.id 
-                    ? { ...r, text: `[prompt-execution|failed] Error: ${error.message || 'An unknown error occurred.'}` }
-                    : r
-                );
-                return { ...t, remarks: updatedRemarks };
-            });
-            await updateDoc(checklistDocRef, { tasks: finalTasks });
+            await updateDoc(checklistDocRef, { tasks: revertTasks });
         } catch (revertError) {
              console.error("CRITICAL: Failed to revert prompt execution status after an execution error.", revertError);
         }
@@ -1229,6 +1228,31 @@ export default function Home() {
       }
   },[activeChecklist, handleUpdateChecklist]);
 
+  const handleDeleteRemark = useCallback(async (taskToUpdate: Task, remarkToDelete: Remark) => {
+    if (!activeChecklist || !storage) return;
+
+    let updatedRemarks = taskToUpdate.remarks.filter(r => r.id !== remarkToDelete.id && r.parentId !== remarkToDelete.id);
+    const updatedTask = { ...taskToUpdate, remarks: updatedRemarks };
+    handleUpdateTask(updatedTask);
+    
+    // Check if the remark has a report and delete it from storage
+    const storageLinkRegex = /\[View results\]\(storage:\/\/([^)]+)\)/;
+    const storageMatch = remarkToDelete.text.match(storageLinkRegex);
+    if (storageMatch) {
+        try {
+            const path = storageMatch[1];
+            const fileRef = storageRef(storage, path);
+            await deleteObject(fileRef);
+            toast({ title: "Report Deleted", description: "The associated AI report has been deleted." });
+        } catch (error: any) {
+            if (error.code !== 'storage/object-not-found') {
+                console.error("Error deleting report from storage:", error);
+                toast({ title: "Storage Error", description: "Could not delete associated report.", variant: "destructive" });
+            }
+        }
+    }
+  }, [activeChecklist, storage, handleUpdateTask, toast]);
+
 
   if (authError || authMethodDisabled) {
     return <FirebaseNotConfigured missingKeys={missingFirebaseConfigKeys} authMethodDisabled={authMethodDisabled} />;
@@ -1355,6 +1379,7 @@ export default function Home() {
         open={isRemarksSheetOpen}
         onOpenChange={setIsRemarksSheetOpen}
         onUpdateTask={handleUpdateTask}
+        onDeleteRemark={handleDeleteRemark}
         assignees={assignees}
         userId={userId || undefined}
       />
