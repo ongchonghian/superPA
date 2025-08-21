@@ -72,7 +72,7 @@ export function SettingsDialog({
               <AlertTitle>Want to use your own API Key?</AlertTitle>
               <AlertDescription>
                 You can get your own free Gemini API key from {' '}
-                <a href="https://aistudio.google.com/keys" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
+                <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="font-semibold underline">
                    Google AI Studio
                 </a>.
               </AlertDescription>
