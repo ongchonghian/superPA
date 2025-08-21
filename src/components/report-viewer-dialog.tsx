@@ -48,11 +48,21 @@ export function ReportViewerDialog({ open, onOpenChange, content, isLoading }: R
   const handleDownload = () => {
     if (!content) return;
     try {
+      const lines = content.split('\n');
+      const titleLine = lines.find(line => line.startsWith('# ')) || 'AI Report';
+      const safeTitle = titleLine
+        .replace(/^#\s*/, '')
+        .replace(/[^\w\s-]/g, '') // Remove invalid filename characters
+        .trim()
+        .replace(/\s+/g, '_'); // Replace spaces with underscores
+      
+      const filename = safeTitle.substring(0, 250) + '.md';
+
       const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = 'ai_report.md';
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
