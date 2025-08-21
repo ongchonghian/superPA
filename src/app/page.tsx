@@ -1,12 +1,10 @@
 
-
-
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ChecklistHeader } from '@/components/checklist-header';
 import { TaskTable } from '@/components/task-table';
-import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document, UserProfile, Invite } from '@/lib/types';
+import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document, UserProfile, Invite, AppSettings } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
 import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth, googleProvider } from '@/lib/firebase';
@@ -34,7 +32,7 @@ import {
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
-import { PRIORITIES } from '@/lib/data';
+import { PRIORITIES, GEMINI_MODELS } from '@/lib/data';
 import { ChecklistAiSuggestionDialog } from '@/components/checklist-ai-suggestion-dialog';
 import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion, InformationRequest, CapabilityWarning } from '@/ai/flows/suggest-checklist-next-steps';
 import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
@@ -57,6 +55,7 @@ import { ChecklistPrintView } from '@/components/checklist-print-view';
 import { ChecklistConfluenceView } from '@/components/checklist-confluence-view';
 import { LoginScreen } from '@/components/login-screen';
 import { ShareChecklistDialog } from '@/components/share-checklist-dialog';
+import { SettingsDialog } from '@/components/settings-dialog';
 
 
 export default function Home() {
@@ -94,6 +93,43 @@ export default function Home() {
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [users, setUsers] = useState<UserProfile[]>([]);
+  const [isSettingsDialogOpen, setIsSettingsDialogOpen] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>({
+    apiKey: '',
+    model: GEMINI_MODELS[0],
+  });
+
+  // Load settings from localStorage on initial render
+  useEffect(() => {
+    try {
+      const savedSettings = localStorage.getItem('super-pa-settings');
+      if (savedSettings) {
+        const parsedSettings = JSON.parse(savedSettings);
+        setSettings(parsedSettings);
+      }
+    } catch (error) {
+      console.error("Could not load settings from localStorage", error);
+    }
+  }, []);
+
+  const handleSaveSettings = useCallback((newSettings: AppSettings) => {
+    setSettings(newSettings);
+    try {
+      localStorage.setItem('super-pa-settings', JSON.stringify(newSettings));
+      toast({
+        title: "Settings Saved",
+        description: "Your new AI settings have been saved locally.",
+      });
+    } catch (error) {
+       console.error("Could not save settings to localStorage", error);
+       toast({
+        title: "Error Saving Settings",
+        description: "Your settings could not be saved to your browser's local storage.",
+        variant: "destructive",
+      });
+    }
+    setIsSettingsDialogOpen(false);
+  }, [toast]);
 
   const isOwner = useMemo(() => {
     if (!user || !activeChecklist) return false;
@@ -112,6 +148,10 @@ export default function Home() {
     } catch (error: any) {
       console.error("Google sign-in failed:", error);
       if (error.code === 'auth/popup-closed-by-user') return;
+      if (error.code === 'auth/unauthorized-domain') {
+          setAuthMethodDisabled(true); // Triggers the specific error screen
+          return;
+      }
       toast({
         title: "Sign-in Failed",
         description: "Could not sign in with Google. Please try again.",
@@ -321,7 +361,11 @@ export default function Home() {
   // Effect to fetch collaborator profiles
   useEffect(() => {
     if (!activeChecklist || !activeChecklist.collaboratorIds || activeChecklist.collaboratorIds.length === 0 || !db) {
-        setUsers([]);
+        if (activeChecklist && activeChecklist.ownerId && userProfile && activeChecklist.ownerId === userProfile.uid) {
+            setUsers([userProfile]);
+        } else {
+            setUsers([]);
+        }
         return;
     }
     const allUserIds = [activeChecklist.ownerId, ...activeChecklist.collaboratorIds];
@@ -342,7 +386,7 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [activeChecklist, toast]);
+  }, [activeChecklist, toast, userProfile]);
 
   // Effect to handle viewing a report
   useEffect(() => {
@@ -398,7 +442,7 @@ export default function Home() {
         description = "The AI model is currently experiencing high demand. Please try again in a few moments.";
     } else if (errorMessage.toLowerCase().includes('api key not valid')) {
         title = "Invalid API Key";
-        description = "Your Gemini API key is not valid. Please check your .env file.";
+        description = "Your Gemini API key is not valid. Please check your AI Settings.";
     }
 
     if (toastId) {
@@ -905,6 +949,8 @@ export default function Home() {
       const result = await suggestChecklistNextSteps({ 
         tasks: tasksToAnalyze,
         contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
+        apiKey: settings.apiKey,
+        model: settings.model as any,
       });
 
       setAiAnalysisResult(result);
@@ -921,7 +967,7 @@ export default function Home() {
     } finally {
       setIsAiLoading(false);
     }
-  }, [activeChecklist, getContextDocumentsForAi, toast, db]);
+  }, [activeChecklist, getContextDocumentsForAi, toast, db, settings]);
 
   const handleAddSuggestionAsRemark = useCallback((suggestionToAdd: ChecklistSuggestion) => {
     if (!activeChecklist) return;
@@ -1006,6 +1052,8 @@ export default function Home() {
             taskDescription: taskForAi.description,
             discussionHistory: taskForAi.remarks.map(r => r.text).join('\n---\n'),
             contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
+            apiKey: settings.apiKey,
+            model: settings.model as any,
         });
 
         const markdownBlob = new Blob([result.resultMarkdown], { type: 'text/markdown;charset=utf-8' });
@@ -1072,7 +1120,7 @@ export default function Home() {
     } finally {
         setRunningRemarkIds(prev => prev.filter(id => id !== remarkToExecute.id));
     }
-  }, [activeChecklist, db, storage, getContextDocumentsForAi, toast, handleAiError]);
+  }, [activeChecklist, db, storage, getContextDocumentsForAi, toast, handleAiError, settings]);
 
   const handleRunRefinedPrompt = useCallback(async (taskToUpdate: Task, parentRemark: Remark) => {
     if (!activeChecklist || !db || !user) {
@@ -1125,13 +1173,15 @@ export default function Home() {
             taskDescription: taskForExecution.description,
             discussionHistory: taskForExecution.remarks.map(r => r.text).join('\n---\n'),
             contextDocuments: await getContextDocumentsForAi(),
+            apiKey: settings.apiKey,
+            model: settings.model as any,
         });
         
         const markdownBlob = new Blob([refinedPromptResult.resultMarkdown], { type: 'text/markdown;charset=utf-8' });
         const resultFileName = `execution_result_${childRemark.id}.md`;
         const resultPath = `checklists/${activeChecklist.id}/executions/${resultFileName}`;
         const resultRef = storageRef(storage!, resultPath);
-        await uploadBytes(resultRef, resultPath, markdownBlob);
+        await uploadBytes(resultRef, markdownBlob);
 
         const resultRemarkText = `[prompt-execution|completed] ${refinedPromptResult.summary} [View results](storage://${resultPath})`;
 
@@ -1166,7 +1216,7 @@ export default function Home() {
     } finally {
         setRunningRemarkIds(prev => prev.filter(id => id !== childRemark.id));
     }
-  }, [activeChecklist, db, user, storage, getContextDocumentsForAi, toast, handleAiError]);
+  }, [activeChecklist, db, user, storage, getContextDocumentsForAi, toast, handleAiError, settings]);
 
 
   const handleUploadDocuments = useCallback(async (files: FileList) => {
@@ -1465,6 +1515,7 @@ export default function Home() {
         onExportConfluence={handleExportConfluence}
         onGetAiSuggestions={fetchAiSuggestions}
         onShare={() => setIsShareDialogOpen(true)}
+        onSettings={() => setIsSettingsDialogOpen(true)}
         progress={progress}
         hasActiveChecklist={!!activeChecklist}
         isOwner={isOwner}
@@ -1616,6 +1667,12 @@ export default function Home() {
             onUpdateCollaborators={handleUpdateCollaborators}
         />
       )}
+      <SettingsDialog
+        open={isSettingsDialogOpen}
+        onOpenChange={setIsSettingsDialogOpen}
+        settings={settings}
+        onSave={handleSaveSettings}
+      />
     </div>
   );
 }

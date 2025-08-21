@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React from 'react';
@@ -32,7 +31,7 @@ import {
   WandSparkles,
   Share2,
   LogOut,
-  Users,
+  Settings,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import type { UserProfile } from '@/lib/types';
@@ -57,6 +56,7 @@ interface ChecklistHeaderProps {
   onExportConfluence: () => void;
   onGetAiSuggestions: () => void;
   onShare: () => void;
+  onSettings: () => void;
   progress: number;
   hasActiveChecklist: boolean;
   isOwner: boolean;
@@ -77,6 +77,7 @@ export function ChecklistHeader({
   onExportConfluence,
   onGetAiSuggestions,
   onShare,
+  onSettings,
   progress,
   hasActiveChecklist,
   isOwner,
@@ -197,6 +198,11 @@ export function ChecklistHeader({
                     <p className="font-bold">{userProfile?.displayName}</p>
                     <p className="text-xs text-muted-foreground font-normal">{userProfile?.email}</p>
                 </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onSettings}>
+                    <Settings className="mr-2 h-4 w-4" />
+                    Settings
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={onSignOut}>
                     <LogOut className="mr-2 h-4 w-4" />

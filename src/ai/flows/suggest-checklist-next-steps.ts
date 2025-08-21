@@ -9,8 +9,10 @@
  * - SuggestChecklistNextStepsOutput - The return type for the suggestChecklistNextSteps function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai as defaultAi, configureAi} from '@/ai/genkit';
 import {z} from 'genkit';
+import {type ModelReference} from 'genkit/model';
+
 
 const TaskAnalysisSchema = z.object({
   taskId: z.string().describe('The unique identifier for the task.'),
@@ -28,6 +30,9 @@ const DocumentContextSchema = z.object({
 const SuggestChecklistNextStepsInputSchema = z.object({
   tasks: z.array(TaskAnalysisSchema).describe('A list of tasks to analyze for potential AI To-Do items.'),
   contextDocuments: z.array(DocumentContextSchema).optional().describe('A list of context documents to provide project context.'),
+  // Config parameters
+  apiKey: z.string().optional(),
+  model: z.custom<ModelReference<any>>().optional(),
 });
 export type SuggestChecklistNextStepsInput = z.infer<typeof SuggestChecklistNextStepsInputSchema>;
 
@@ -60,14 +65,20 @@ const SuggestChecklistNextStepsOutputSchema = z.object({
 export type SuggestChecklistNextStepsOutput = z.infer<typeof SuggestChecklistNextStepsOutputSchema>;
 
 export async function suggestChecklistNextSteps(input: SuggestChecklistNextStepsInput): Promise<SuggestChecklistNextStepsOutput> {
-  return suggestChecklistNextStepsFlow(input);
-}
+  const ai = configureAi(input.apiKey, input.model);
 
-const prompt = ai.definePrompt({
-  name: 'suggestChecklistNextStepsPrompt',
-  input: {schema: SuggestChecklistNextStepsInputSchema},
-  output: {schema: SuggestChecklistNextStepsOutputSchema},
-  prompt: `You are an expert AI assistant that helps users break down project tasks into actionable steps. Your goal is to analyze a list of tasks, assess your own capabilities, and suggest a SINGLE, high-impact "AI To-Do" for tasks you can perform, or provide a warning for tasks you cannot.
+  const suggestChecklistNextStepsFlow = ai.defineFlow(
+    {
+      name: 'suggestChecklistNextStepsFlow',
+      inputSchema: SuggestChecklistNextStepsInputSchema,
+      outputSchema: SuggestChecklistNextStepsOutputSchema,
+    },
+    async (input) => {
+      const prompt = ai.definePrompt({
+        name: 'suggestChecklistNextStepsPrompt',
+        input: {schema: SuggestChecklistNextStepsInputSchema},
+        output: {schema: SuggestChecklistNextStepsOutputSchema},
+        prompt: `You are an expert AI assistant that helps users break down project tasks into actionable steps. Your goal is to analyze a list of tasks, assess your own capabilities, and suggest a SINGLE, high-impact "AI To-Do" for tasks you can perform, or provide a warning for tasks you cannot.
 
 --- YOUR CAPABILITIES ---
 *   **I CAN:** Research, analyze, write, summarize, generate text-based content (like code, documentation, outlines), and plan. I can also generate world-class, optimized prompts for other AI models and then execute those prompts to get a final result.
@@ -140,16 +151,11 @@ Discussion History:
 --- TASK END ---
 {{/each}}
 `,
-});
+      });
 
-const suggestChecklistNextStepsFlow = ai.defineFlow(
-  {
-    name: 'suggestChecklistNextStepsFlow',
-    inputSchema: SuggestChecklistNextStepsInputSchema,
-    outputSchema: SuggestChecklistNextStepsOutputSchema,
-  },
-  async (input) => {
-    const {output} = await prompt(input);
-    return output!;
-  }
-);
+      const {output} = await prompt(input);
+      return output!;
+    }
+  );
+  return suggestChecklistNextStepsFlow(input);
+}

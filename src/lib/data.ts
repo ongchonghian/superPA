@@ -1,7 +1,14 @@
+
 import type { Checklist, TaskPriority, TaskStatus } from './types';
 
 export const PRIORITIES = ['High', 'Medium', 'Low'] as const;
 export const STATUSES = ['complete', 'in progress', 'pending'] as const;
+
+export const GEMINI_MODELS = [
+  'googleai/gemini-1.5-pro-latest',
+  'googleai/gemini-1.5-flash-latest',
+  'googleai/gemini-pro',
+] as const;
 
 // Note: this data is now only for reference and is not used to initialize the app.
 // The app now fetches data from Firestore.

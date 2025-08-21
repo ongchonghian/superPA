@@ -1,8 +1,9 @@
 
-import {PRIORITIES, STATUSES} from './data';
+import {PRIORITIES, STATUSES, GEMINI_MODELS} from './data';
 
 export type TaskStatus = (typeof STATUSES)[number];
 export type TaskPriority = (typeof PRIORITIES)[number];
+export type GeminiModel = (typeof GEMINI_MODELS)[number];
 
 export interface Remark {
   id: string;
@@ -54,6 +55,11 @@ export interface Document {
   storagePath: string; // Path to the file in Firebase Storage
   createdAt: string; // ISO string for Firestore compatibility
   mimeType: string; // The MIME type of the file
+}
+
+export interface AppSettings {
+  apiKey: string;
+  model: GeminiModel | string; // Allow string for flexibility, but prefer GeminiModel
 }
 
 declare global {

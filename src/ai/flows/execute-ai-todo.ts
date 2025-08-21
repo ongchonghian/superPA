@@ -9,8 +9,9 @@
  * - ExecuteAiTodoOutput - The return type for the executeAiTodo function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai as defaultAi, configureAi} from '@/ai/genkit';
 import {z} from 'genkit';
+import {type ModelReference} from 'genkit/model';
 
 const DocumentContextSchema = z.object({
   fileName: z.string(),
@@ -22,6 +23,9 @@ const ExecuteAiTodoInputSchema = z.object({
   taskDescription: z.string().describe('The description of the parent task for broader context.'),
   discussionHistory: z.string().describe('The full discussion history of the task, including all user remarks and other AI To-Dos.'),
   contextDocuments: z.array(DocumentContextSchema).optional().describe('A list of context documents to provide project context.'),
+  // Config parameters
+  apiKey: z.string().optional(),
+  model: z.custom<ModelReference<any>>().optional(),
 });
 export type ExecuteAiTodoInput = z.infer<typeof ExecuteAiTodoInputSchema>;
 
@@ -32,29 +36,35 @@ const ExecuteAiTodoOutputSchema = z.object({
 export type ExecuteAiTodoOutput = z.infer<typeof ExecuteAiTodoOutputSchema>;
 
 export async function executeAiTodo(input: ExecuteAiTodoInput): Promise<ExecuteAiTodoOutput> {
-  return executeAiTodoFlow(input);
-}
+  const ai = configureAi(input.apiKey, input.model);
 
-// Schema for prompt generation
-const RefinedPromptOutputSchema = z.object({
-  refinedPrompt: z.string().describe("The complete, optimized prompt for the target LLM."),
-  improvementSummary: z.string().describe("A brief, markdown-formatted explanation of the primary improvements made and why they enhance the prompt's effectiveness."),
-  keyPrinciplesApplied: z.array(z.string()).describe("A bulleted list of the core prompt engineering principles applied."),
-});
+  const executeAiTodoFlow = ai.defineFlow(
+    {
+      name: 'executeAiTodoFlow',
+      inputSchema: ExecuteAiTodoInputSchema,
+      outputSchema: ExecuteAiTodoOutputSchema,
+    },
+    async (input) => {
+      // Schema for prompt generation
+      const RefinedPromptOutputSchema = z.object({
+        refinedPrompt: z.string().describe("The complete, optimized prompt for the target LLM."),
+        improvementSummary: z.string().describe("A brief, markdown-formatted explanation of the primary improvements made and why they enhance the prompt's effectiveness."),
+        keyPrinciplesApplied: z.array(z.string()).describe("A bulleted list of the core prompt engineering principles applied."),
+      });
 
-// Prompt for prompt generation
-const generateRefinedPrompt = ai.definePrompt({
-    name: 'generateRefinedPrompt',
-    input: {
-        schema: z.object({
-            problem: z.string(),
-            topic: z.string(),
-        }),
-    },
-    output: {
-        schema: RefinedPromptOutputSchema,
-    },
-    prompt: `
+      // Prompt for prompt generation
+      const generateRefinedPrompt = ai.definePrompt({
+          name: 'generateRefinedPrompt',
+          input: {
+              schema: z.object({
+                  problem: z.string(),
+                  topic: z.string(),
+              }),
+          },
+          output: {
+              schema: RefinedPromptOutputSchema,
+          },
+          prompt: `
 <role>You are a world-class AI Prompt Architect, Research Analyst, and Metacognitive Prompt Optimizer.</role>
 <context>
 Your goal is to generate a maximally effective, highly refined prompt for a Large Language Model (LLM) to solve a specific business problem. You will leverage advanced prompt engineering principles, including but not limited to:
@@ -111,14 +121,14 @@ You will perform the following steps internally, without explicitly showing them
 Generate the refined prompt and its summary now, in JSON format.
 </task>
 `
-});
+      });
 
-// Default prompt for simple tasks
-const prompt = ai.definePrompt({
-  name: 'executeAiTodoPrompt',
-  input: {schema: ExecuteAiTodoInputSchema},
-  output: {schema: ExecuteAiTodoOutputSchema},
-  prompt: `You are an expert-level AI assistant, tasked with executing a specific to-do item for a project.
+      // Default prompt for simple tasks
+      const prompt = ai.definePrompt({
+        name: 'executeAiTodoPrompt',
+        input: {schema: ExecuteAiTodoInputSchema},
+        output: {schema: ExecuteAiTodoOutputSchema},
+        prompt: `You are an expert-level AI assistant, tasked with executing a specific to-do item for a project.
 
 Your goal is to provide a comprehensive, detailed, and well-structured response in Markdown format that directly fulfills the user's request. You must also provide a brief summary of your output.
 
@@ -147,92 +157,87 @@ Execute the following AI To-Do item NOW:
 
 Based on all the provided context, generate a detailed response in Markdown. Your response should be thorough, actionable, and directly address the to-do item. After generating the detailed response, provide a simple, one-sentence summary of what you did.
 `,
-});
+      });
 
-const executeAiTodoFlow = ai.defineFlow(
-  {
-    name: 'executeAiTodoFlow',
-    inputSchema: ExecuteAiTodoInputSchema,
-    outputSchema: ExecuteAiTodoOutputSchema,
-  },
-  async (input) => {
-    const isPromptGeneration = /generate a( refined)? prompt|design a prompt/i.test(input.aiTodoText);
-    const isPromptExecution = /^execute the refined prompt to/i.test(input.aiTodoText);
+      const isPromptGeneration = /generate a( refined)? prompt|design a prompt/i.test(input.aiTodoText);
+      const isPromptExecution = /^execute the refined prompt to/i.test(input.aiTodoText);
 
-    if (isPromptGeneration) {
-        const topicMatch = input.aiTodoText.match(/to (.*)/i);
-        const topic = topicMatch ? topicMatch[1] : input.aiTodoText;
+      if (isPromptGeneration) {
+          const topicMatch = input.aiTodoText.match(/to (.*)/i);
+          const topic = topicMatch ? topicMatch[1] : input.aiTodoText;
 
-        const { output } = await generateRefinedPrompt({
-            problem: input.taskDescription,
-            topic: topic,
-        });
+          const { output } = await generateRefinedPrompt({
+              problem: input.taskDescription,
+              topic: topic,
+          });
 
-        if (!output) {
-            throw new Error("Failed to generate refined prompt.");
-        }
-        
-        const keyPrinciplesString = output.keyPrinciplesApplied.map(p => `- ${p}`).join('\n');
-        
-        const resultMarkdown = [
-            '### Refined Prompt',
-            '```',
-            output.refinedPrompt,
-            '```',
-            '',
-            '### Improvement Summary',
-            output.improvementSummary,
-            '',
-            '### Key Principles Applied',
-            keyPrinciplesString,
-        ].join('\n');
-        
-        const summary = `Generated a refined prompt for: ${topic}`;
+          if (!output) {
+              throw new Error("Failed to generate refined prompt.");
+          }
+          
+          const keyPrinciplesString = output.keyPrinciplesApplied.map(p => `- ${p}`).join('\n');
+          
+          const resultMarkdown = [
+              '### Refined Prompt',
+              '```',
+              output.refinedPrompt,
+              '```',
+              '',
+              '### Improvement Summary',
+              output.improvementSummary,
+              '',
+              '### Key Principles Applied',
+              keyPrinciplesString,
+          ].join('\n');
+          
+          const summary = `Generated a refined prompt for: ${topic}`;
 
-        return {
-            resultMarkdown,
-            summary,
-        };
-    } else if (isPromptExecution) {
-        const topicMatch = input.aiTodoText.match(/^execute the refined prompt to (.*)/i);
-        const topic = topicMatch ? topicMatch[1].trim() : input.aiTodoText.replace(/^execute the refined prompt to /, '').trim();
-        
-        // Step 1: Re-generate the refined prompt to ensure we have it.
-        const { output: refinedPromptOutput } = await generateRefinedPrompt({
-            problem: input.taskDescription,
-            topic: topic,
-        });
+          return {
+              resultMarkdown,
+              summary,
+          };
+      } else if (isPromptExecution) {
+          const topicMatch = input.aiTodoText.match(/^execute the refined prompt to (.*)/i);
+          const topic = topicMatch ? topicMatch[1].trim() : input.aiTodoText.replace(/^execute the refined prompt to /, '').trim();
+          
+          // Step 1: Re-generate the refined prompt to ensure we have it.
+          const { output: refinedPromptOutput } = await generateRefinedPrompt({
+              problem: input.taskDescription,
+              topic: topic,
+          });
 
-        if (!refinedPromptOutput) {
-            throw new Error("Failed to generate the refined prompt needed for execution.");
-        }
-        const { refinedPrompt } = refinedPromptOutput;
+          if (!refinedPromptOutput) {
+              throw new Error("Failed to generate the refined prompt needed for execution.");
+          }
+          const { refinedPrompt } = refinedPromptOutput;
 
-        // Step 2: Execute the refined prompt to get the main content.
-        const executionResponse = await ai.generate({
-          prompt: refinedPrompt,
-        });
+          // Step 2: Execute the refined prompt to get the main content.
+          const executionResponse = await ai.generate({
+            prompt: refinedPrompt,
+          });
 
-        const resultMarkdown = executionResponse.text;
-        if (!resultMarkdown) {
-          throw new Error("Executing the refined prompt yielded no text result.");
-        }
-        
-        // Step 3: Generate a summary for the result in a separate, simple call.
-        const summaryResponse = await ai.generate({
-          prompt: `Concisely summarize the following text in a single sentence:\n\n---\n\n${resultMarkdown.substring(0, 4000)}`
-        });
-        
-        const summary = summaryResponse.text || "Execution completed.";
+          const resultMarkdown = executionResponse.text;
+          if (!resultMarkdown) {
+            throw new Error("Executing the refined prompt yielded no text result.");
+          }
+          
+          // Step 3: Generate a summary for the result in a separate, simple call.
+          const summaryResponse = await ai.generate({
+            prompt: `Concisely summarize the following text in a single sentence:\n\n---\n\n${resultMarkdown.substring(0, 4000)}`
+          });
+          
+          const summary = summaryResponse.text || "Execution completed.";
 
-        return {
-            resultMarkdown,
-            summary,
-        };
+          return {
+              resultMarkdown,
+              summary,
+          };
 
-    } else {
-      const {output} = await prompt(input);
-      return output!;
+      } else {
+        const {output} = await prompt(input);
+        return output!;
+      }
     }
-  }
-);
+  );
+  return executeAiTodoFlow(input);
+}
