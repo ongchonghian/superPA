@@ -1,14 +1,15 @@
 
 
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ChecklistHeader } from '@/components/checklist-header';
 import { TaskTable } from '@/components/task-table';
-import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document } from '@/lib/types';
+import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document, UserProfile, Invite } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
-import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth, app } from '@/lib/firebase';
+import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth, googleProvider } from '@/lib/firebase';
 import { FirebaseNotConfigured } from '@/components/firebase-not-configured';
 import { FirestoreNotConnected } from '@/components/firestore-not-connected';
 import { FirestorePermissionDenied } from '@/components/firestore-permission-denied';
@@ -27,8 +28,10 @@ import {
   arrayRemove,
   writeBatch,
   where,
+  or,
+  setDoc,
 } from 'firebase/firestore';
-import { onAuthStateChanged, signInAnonymously } from 'firebase/auth';
+import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
 import { ImportConflictDialog } from '@/components/import-conflict-dialog';
 import { PRIORITIES } from '@/lib/data';
@@ -52,11 +55,14 @@ import {
 import { ReportViewerDialog } from '@/components/report-viewer-dialog';
 import { ChecklistPrintView } from '@/components/checklist-print-view';
 import { ChecklistConfluenceView } from '@/components/checklist-confluence-view';
+import { LoginScreen } from '@/components/login-screen';
+import { ShareChecklistDialog } from '@/components/share-checklist-dialog';
 
 
 export default function Home() {
   const { toast } = useToast();
-  const [userId, setUserId] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [authInitialized, setAuthInitialized] = useState(false);
   const [authError, setAuthError] = useState(false);
   const [authMethodDisabled, setAuthMethodDisabled] = useState(false);
@@ -86,52 +92,135 @@ export default function Home() {
   const [isReportViewerOpen, setIsReportViewerOpen] = useState(false);
   const [reportContent, setReportContent] = useState('');
   const [isReportLoading, setIsReportLoading] = useState(false);
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+
+  const isOwner = useMemo(() => {
+    if (!user || !activeChecklist) return false;
+    return activeChecklist.ownerId === user.uid;
+  }, [user, activeChecklist]);
 
   // If Firebase is not configured statically, show guidance.
   if (!isFirebaseConfigured) {
     return <FirebaseNotConfigured missingKeys={missingFirebaseConfigKeys} />;
   }
+  
+  const handleSignIn = async () => {
+    if (!auth || !googleProvider) return;
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error: any) {
+      console.error("Google sign-in failed:", error);
+      if (error.code === 'auth/popup-closed-by-user') return;
+      toast({
+        title: "Sign-in Failed",
+        description: "Could not sign in with Google. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
 
-  // Effect to handle anonymous authentication
+  const handleSignOut = async () => {
+    if (!auth) return;
+    await signOut(auth);
+  };
+  
+  // Effect to handle auth state changes and user profile management
   useEffect(() => {
-    if (!auth) {
-      setAuthError(true);
-      setAuthInitialized(true);
-      return;
+    if (!auth || !db) {
+        setAuthError(true);
+        setAuthInitialized(true);
+        return;
     }
 
-    try {
-      const unsubscribe = onAuthStateChanged(auth, user => {
-        if (user) {
-          setUserId(user.uid);
-          setAuthInitialized(true);
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      if (user) {
+        setUser(user);
+        const userRef = doc(db, 'users', user.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
+          // Create new user profile
+          const newUserProfile: UserProfile = {
+            uid: user.uid,
+            email: user.email,
+            displayName: user.displayName,
+            photoURL: user.photoURL,
+          };
+          await setDoc(userRef, newUserProfile);
+          setUserProfile(newUserProfile);
         } else {
-          signInAnonymously(auth).catch((error: any) => {
-            console.error("Anonymous sign-in failed: ", error);
-            if (error.code === 'auth/configuration-not-found') {
-              setAuthError(true);
-            } else if (error.code === 'auth/admin-restricted-operation' || error.code === 'auth/operation-not-allowed') {
-              setAuthMethodDisabled(true);
-            }
-            setAuthInitialized(true);
-          });
+          setUserProfile(userSnap.data() as UserProfile);
         }
-      });
-      return () => unsubscribe();
-    } catch (error: any) {
-      console.error("Failed to initialize auth listener:", error);
-      if (error.code === 'auth/configuration-not-found') {
-        setAuthError(true);
-      } else if (error.code === 'auth/admin-restricted-operation' || error.code === 'auth/operation-not-allowed') {
-        setAuthMethodDisabled(true);
+        
+      } else {
+        setUser(null);
+        setUserProfile(null);
       }
       setAuthInitialized(true);
-    }
-  }, []);
+    }, (error) => {
+        console.error("Auth state listener error:", error);
+        setAuthError(true);
+        setAuthInitialized(true);
+    });
+
+    return () => unsubscribe();
+  }, [toast]);
   
-  // Effect to fetch the list of checklist names and IDs for the current user
+  // Effect to handle incoming invites from URL
   useEffect(() => {
-    if (!authInitialized || !userId || !db) {
+      if (!user || !db) return;
+
+      const handleInvite = async () => {
+          const params = new URLSearchParams(window.location.search);
+          const inviteId = params.get('invite');
+
+          if (inviteId) {
+              const inviteRef = doc(db, 'invites', inviteId);
+              try {
+                  const inviteSnap = await getDoc(inviteRef);
+                  if (inviteSnap.exists()) {
+                      const inviteData = inviteSnap.data() as Invite;
+                      const checklistRef = doc(db, 'checklists', inviteData.checklistId);
+
+                      await updateDoc(checklistRef, {
+                          collaboratorIds: arrayUnion(user.uid)
+                      });
+
+                      await deleteDoc(inviteRef);
+
+                      toast({
+                          title: "Invitation Accepted!",
+                          description: `You can now collaborate on the "${inviteData.checklistName}" checklist.`,
+                      });
+                  } else {
+                      toast({
+                          title: "Invalid Invitation",
+                          description: "This invitation link is either invalid or has expired.",
+                          variant: "destructive",
+                      });
+                  }
+              } catch (error) {
+                  console.error("Error handling invite:", error);
+                  toast({
+                      title: "Error",
+                      description: "Could not process the invitation.",
+                      variant: "destructive",
+                  });
+              } finally {
+                  // Clean URL
+                  const newUrl = window.location.pathname;
+                  window.history.replaceState({}, document.title, newUrl);
+              }
+          }
+      };
+      
+      handleInvite();
+  }, [user, toast]);
+
+  // Effect to fetch the list of checklist names and IDs for the current user (owned or collaborated)
+  useEffect(() => {
+    if (!authInitialized || !user || !db) {
       if(authInitialized) setIsLoading(false);
       return;
     }
@@ -140,7 +229,13 @@ export default function Home() {
     setFirestoreError(false); // Reset on each attempt
     setFirestorePermissionError(false); // Reset on each attempt
 
-    const q = query(collection(db, 'checklists'), where('ownerId', '==', userId));
+    const q = query(
+        collection(db, 'checklists'), 
+        or(
+            where('ownerId', '==', user.uid),
+            where('collaboratorIds', 'array-contains', user.uid)
+        )
+    );
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const metas = querySnapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
       setChecklistMetas(metas);
@@ -172,13 +267,14 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [toast, authInitialized, userId]);
+  }, [toast, authInitialized, user]);
 
   // Effect to subscribe to the currently active checklist for real-time updates
   useEffect(() => {
     if (!activeChecklistId || !db) {
       setActiveChecklist(null);
       setDocuments([]);
+      setUsers([]);
       if (authInitialized) setIsLoading(false); // Stop loading if there's no checklist to load
       return;
     }
@@ -217,6 +313,32 @@ export default function Home() {
     }, (error) => {
         console.error("Error fetching documents: ", error);
         toast({ title: "Error", description: "Could not load associated documents.", variant: "destructive" });
+    });
+
+    return () => unsubscribe();
+  }, [activeChecklist, toast]);
+
+  // Effect to fetch collaborator profiles
+  useEffect(() => {
+    if (!activeChecklist || !activeChecklist.collaboratorIds || activeChecklist.collaboratorIds.length === 0 || !db) {
+        setUsers([]);
+        return;
+    }
+    const allUserIds = [activeChecklist.ownerId, ...activeChecklist.collaboratorIds];
+    const uniqueUserIds = [...new Set(allUserIds)];
+    
+    if (uniqueUserIds.length === 0) {
+        setUsers([]);
+        return;
+    }
+
+    const q = query(collection(db, 'users'), where('uid', 'in', uniqueUserIds));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const fetchedUsers = querySnapshot.docs.map(d => d.data() as UserProfile);
+        setUsers(fetchedUsers);
+    }, (error) => {
+        console.error("Error fetching user profiles:", error);
+        toast({ title: "Error", description: "Could not load collaborator profiles.", variant: "destructive" });
     });
 
     return () => unsubscribe();
@@ -299,9 +421,9 @@ export default function Home() {
   }, [toast]);
 
   const findChecklistByName = useCallback(async (name: string): Promise<{ id: string; name: string } | null> => {
-    if (!db || !userId) return null;
+    if (!db || !user) return null;
     
-    const checklistsQuery = query(collection(db, 'checklists'), where('ownerId', '==', userId));
+    const checklistsQuery = query(collection(db, 'checklists'), where('ownerId', '==', user.uid));
     const querySnapshot = await getDocs(checklistsQuery);
     
     if (querySnapshot.empty) {
@@ -319,10 +441,10 @@ export default function Home() {
     }
 
     return null;
-  }, [userId]);
+  }, [user]);
 
   const handleSaveNewChecklist = useCallback(async (name: string, tasks: Task[] = []) => {
-    if (!name || !userId) return;
+    if (!name || !user) return;
 
     // Final safeguard check before writing to the database.
     const existingChecklist = await findChecklistByName(name);
@@ -336,7 +458,8 @@ export default function Home() {
         const newChecklist: Omit<Checklist, 'id'> = {
             name: name,
             tasks: tasks,
-            ownerId: userId,
+            ownerId: user.uid,
+            collaboratorIds: [],
             documentIds: [],
         };
         const docRef = await addDoc(collection(db!, 'checklists'), newChecklist);
@@ -346,7 +469,7 @@ export default function Home() {
         console.error("Error adding checklist: ", error);
         toast({ title: "Error", description: "Failed to create checklist.", variant: "destructive" });
     }
-  }, [toast, userId, findChecklistByName]);
+  }, [toast, user, findChecklistByName]);
   
   const handleSwitchChecklist = useCallback((id: string) => {
     setActiveChecklistId(id);
@@ -461,7 +584,7 @@ export default function Home() {
   }, [db, handleUpdateChecklist, toast]);
 
   const handleFileSelectedForImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (!importMode || !userId || !db) return;
+    if (!importMode || !user || !db) return;
 
     const file = event.target.files?.[0];
     if (!file) {
@@ -952,7 +1075,7 @@ export default function Home() {
   }, [activeChecklist, db, storage, getContextDocumentsForAi, toast, handleAiError]);
 
   const handleRunRefinedPrompt = useCallback(async (taskToUpdate: Task, parentRemark: Remark) => {
-    if (!activeChecklist || !db || !userId) {
+    if (!activeChecklist || !db || !user) {
         toast({ title: "Error", description: "Cannot run prompt: context is missing.", variant: "destructive" });
         return;
     }
@@ -968,20 +1091,27 @@ export default function Home() {
         id: `rem_child_${Date.now()}_${Math.random()}`,
         parentId: parentRemark.id,
         text: `[prompt-execution|pending] Execute the refined prompt to ${topic}`,
-        userId: userId,
+        userId: user.uid,
         timestamp: new Date().toISOString(),
     };
     
     setRunningRemarkIds(prev => [...prev, childRemark.id]);
     const executionToast = toast({ title: "Prompt Execution Started", description: "The AI is now executing the refined prompt." });
     
-    const tasksWithRunning = activeChecklist.tasks.map(t => {
+    const tasksWithChild = activeChecklist.tasks.map(t => {
       if (t.id === taskToUpdate.id) {
         const remarksWithChild = [...t.remarks, childRemark];
-        const remarksWithRunning = remarksWithChild.map(r => r.id === childRemark.id ? {...r, text: r.text.replace('[prompt-execution|pending]', '[prompt-execution|running]')} : r);
-        return { ...t, remarks: remarksWithRunning };
+        return { ...t, remarks: remarksWithChild };
       }
       return t;
+    });
+    
+    const tasksWithRunning = tasksWithChild.map(t => {
+        if (t.id === taskToUpdate.id) {
+            const updatedRemarks = t.remarks.map(r => r.id === childRemark.id ? {...r, text: r.text.replace('[prompt-execution|pending]', '[prompt-execution|running]')} : r);
+            return {...t, remarks: updatedRemarks };
+        }
+        return t;
     });
 
     try {
@@ -1001,7 +1131,7 @@ export default function Home() {
         const resultFileName = `execution_result_${childRemark.id}.md`;
         const resultPath = `checklists/${activeChecklist.id}/executions/${resultFileName}`;
         const resultRef = storageRef(storage!, resultPath);
-        await uploadBytes(resultRef, markdownBlob);
+        await uploadBytes(resultRef, resultPath, markdownBlob);
 
         const resultRemarkText = `[prompt-execution|completed] ${refinedPromptResult.summary} [View results](storage://${resultPath})`;
 
@@ -1017,7 +1147,7 @@ export default function Home() {
     } catch (error: any) {
         handleAiError(error, executionToast.id);
         
-        const revertTasks = tasksWithRunning.map(t => {
+        const tasksWithFailed = tasksWithRunning.map(t => {
             if (t.id !== taskToUpdate.id) return t;
             const updatedRemarks = t.remarks.map(r => 
                 r.id === childRemark.id 
@@ -1029,14 +1159,14 @@ export default function Home() {
         
         try {
             const checklistDocRef = doc(db!, 'checklists', activeChecklist.id);
-            await updateDoc(checklistDocRef, { tasks: revertTasks });
+            await updateDoc(checklistDocRef, { tasks: tasksWithFailed });
         } catch (revertError) {
              console.error("CRITICAL: Failed to revert prompt execution status after an execution error.", revertError);
         }
     } finally {
         setRunningRemarkIds(prev => prev.filter(id => id !== childRemark.id));
     }
-  }, [activeChecklist, db, userId, storage, getContextDocumentsForAi, toast, handleAiError]);
+  }, [activeChecklist, db, user, storage, getContextDocumentsForAi, toast, handleAiError]);
 
 
   const handleUploadDocuments = useCallback(async (files: FileList) => {
@@ -1289,6 +1419,15 @@ export default function Home() {
   
   }, [activeChecklist, storage, handleUpdateTask, toast]);
 
+  const handleUpdateCollaborators = async (collaboratorIds: string[]) => {
+    if (!activeChecklist) return;
+    await handleUpdateChecklist({ id: activeChecklist.id, collaboratorIds });
+    toast({ title: "Collaborators Updated", description: "The list of collaborators has been updated."});
+  };
+
+  if (!authInitialized) {
+    return <Loading />;
+  }
 
   if (authError || authMethodDisabled) {
     return <FirebaseNotConfigured missingKeys={missingFirebaseConfigKeys} authMethodDisabled={authMethodDisabled} />;
@@ -1302,13 +1441,19 @@ export default function Home() {
     return <FirestoreNotConnected />;
   }
 
-  if (!authInitialized || (isLoading && !activeChecklistId)) {
+  if (!user) {
+    return <LoginScreen onSignIn={handleSignIn} />;
+  }
+
+  if (isLoading && !activeChecklistId) {
     return <Loading />;
   }
 
   return (
     <div className="min-h-screen bg-background">
       <ChecklistHeader
+        userProfile={userProfile}
+        onSignOut={handleSignOut}
         checklists={checklistMetas}
         activeChecklistId={activeChecklistId}
         onSwitch={handleSwitchChecklist}
@@ -1319,8 +1464,11 @@ export default function Home() {
         onExportPdf={handleExportPdf}
         onExportConfluence={handleExportConfluence}
         onGetAiSuggestions={fetchAiSuggestions}
+        onShare={() => setIsShareDialogOpen(true)}
         progress={progress}
         hasActiveChecklist={!!activeChecklist}
+        isOwner={isOwner}
+        collaborators={users.filter(u => u.uid !== user.uid)}
       />
       <main className="p-4 sm:p-6 lg:p-8">
         <input
@@ -1338,6 +1486,7 @@ export default function Home() {
               isUploading={isUploading}
               storageCorsError={storageCorsError}
               onDelete={handleDeleteDocument}
+              isCollaborator={!isOwner}
             />
             <TaskTable
               checklist={activeChecklist}
@@ -1345,6 +1494,8 @@ export default function Home() {
               onExecuteAiTodo={handleExecuteAiTodo}
               onRunRefinedPrompt={handleRunRefinedPrompt}
               runningRemarkIds={runningRemarkIds}
+              isOwner={isOwner}
+              userId={user.uid}
             />
           </>
         ) : (
@@ -1409,6 +1560,7 @@ export default function Home() {
         open={isTaskDialogOpen}
         onOpenChange={setIsTaskDialogOpen}
         onSave={handleSaveTask}
+        isCollaborator={!isOwner}
       />
       <TaskRemarksSheet
         task={remarksTask}
@@ -1418,7 +1570,8 @@ export default function Home() {
         onDeleteRemark={handleDeleteRemark}
         onDeleteMultipleRemarks={handleDeleteMultipleRemarks}
         assignees={assignees}
-        userId={userId || undefined}
+        userId={user?.uid}
+        isCollaborator={!isOwner}
       />
       <AlertDialog
         open={!!checklistToDelete}
@@ -1453,6 +1606,16 @@ export default function Home() {
         content={reportContent}
         isLoading={isReportLoading}
       />
+      {activeChecklist && userProfile && (
+        <ShareChecklistDialog
+            open={isShareDialogOpen}
+            onOpenChange={setIsShareDialogOpen}
+            checklist={activeChecklist}
+            userProfile={userProfile}
+            collaborators={users}
+            onUpdateCollaborators={handleUpdateCollaborators}
+        />
+      )}
     </div>
   );
 }

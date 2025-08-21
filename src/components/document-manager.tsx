@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useRef, useState } from 'react';
@@ -25,9 +26,10 @@ interface DocumentManagerProps {
   onDelete: (documentId: string) => Promise<void>;
   isUploading: boolean;
   storageCorsError: boolean;
+  isCollaborator: boolean;
 }
 
-export function DocumentManager({ documents, onUpload, onDelete, isUploading, storageCorsError }: DocumentManagerProps) {
+export function DocumentManager({ documents, onUpload, onDelete, isUploading, storageCorsError, isCollaborator }: DocumentManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const storageBucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
@@ -99,10 +101,10 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading, st
                 type="file"
                 multiple
                 className="cursor-pointer file:text-primary file:font-semibold"
-                disabled={isUploading}
+                disabled={isUploading || isCollaborator}
               />
             </div>
-            <Button onClick={handleUploadClick} disabled={isUploading}>
+            <Button onClick={handleUploadClick} disabled={isUploading || isCollaborator}>
               {isUploading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
@@ -122,7 +124,7 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading, st
                           <File className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                           <span className="font-medium text-sm truncate" title={doc.fileName}>{doc.fileName}</span>
                       </div>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive flex-shrink-0" onClick={() => setDocToDelete(doc)} disabled={isUploading}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive flex-shrink-0" onClick={() => setDocToDelete(doc)} disabled={isUploading || isCollaborator}>
                         <Trash2 className="h-4 w-4" />
                         <span className="sr-only">Delete document</span>
                     </Button>

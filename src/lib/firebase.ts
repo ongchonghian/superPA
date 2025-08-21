@@ -1,6 +1,7 @@
 
+
 import { initializeApp, getApps, getApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import { getAuth, type Auth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
@@ -17,6 +18,7 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
+let googleProvider: GoogleAuthProvider | null = null;
 
 const ENV_KEY_MAP: Record<string, string> = {
     apiKey: 'NEXT_PUBLIC_FIREBASE_API_KEY',
@@ -40,6 +42,7 @@ if (isFirebaseConfigured) {
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
+    googleProvider = new GoogleAuthProvider();
   } catch(e) {
     console.error("Firebase initialization failed:", e);
   }
@@ -48,4 +51,4 @@ if (isFirebaseConfigured) {
     console.log("Firebase configuration is missing or incomplete. The following keys were not found in the environment:", missingFirebaseConfigKeys.join(', '));
 }
 
-export { app, auth, db, storage };
+export { app, auth, db, storage, googleProvider };

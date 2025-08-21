@@ -13,7 +13,7 @@ export interface Remark {
 }
 
 export interface Task {
-  id: string;
+  id:string;
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
@@ -22,13 +22,30 @@ export interface Task {
   remarks: Remark[];
 }
 
+export interface UserProfile {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+}
+
 export interface Checklist {
   id: string;
   name: string;
   tasks: Task[];
   ownerId: string;
+  collaboratorIds?: string[];
   documentIds?: string[]; // Array of document IDs associated with this checklist
 }
+
+export interface Invite {
+    id: string;
+    checklistId: string;
+    checklistName: string;
+    inviterId: string;
+    inviterName: string;
+}
+
 
 export interface Document {
   id:string;

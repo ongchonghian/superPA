@@ -1,5 +1,6 @@
 
 
+
 'use client';
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -35,9 +36,10 @@ interface TaskRemarksSheetProps {
   onDeleteMultipleRemarks: (task: Task, remarkIds: string[]) => void;
   assignees: string[];
   userId?: string;
+  isCollaborator: boolean;
 }
 
-export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDeleteRemark, onDeleteMultipleRemarks, assignees = [], userId }: TaskRemarksSheetProps) {
+export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDeleteRemark, onDeleteMultipleRemarks, assignees = [], userId, isCollaborator }: TaskRemarksSheetProps) {
     const [newRemark, setNewRemark] = useState('');
     const [mentionQuery, setMentionQuery] = useState('');
     const [isMentionPopoverOpen, setIsMentionPopoverOpen] = useState(false);
@@ -230,7 +232,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
                     <SheetDescription>View and add comments to this task. Type @ to mention a user.</SheetDescription>
                 </SheetHeader>
                 
-                {task.remarks.length > 0 && (
+                {task.remarks.length > 0 && !isCollaborator && (
                     <div className="flex items-center gap-3 px-4 sm:px-6 -mx-4 sm:-mx-6 py-2 border-y">
                         <Checkbox 
                             id="select-all-remarks"
@@ -250,13 +252,15 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
                         {flattenedRemarks.length > 0 ? (
                            flattenedRemarks.map(({ remark, level }) => (
                             <div key={remark.id} className="group flex items-start gap-3" style={{ paddingLeft: `${level * 1.5}rem` }}>
-                                <Checkbox
-                                    id={`select-remark-${remark.id}`}
-                                    className="mt-1"
-                                    checked={selectedRemarkIds.includes(remark.id)}
-                                    onCheckedChange={(checked) => handleSelectRemark(remark.id, !!checked)}
-                                    aria-label={`Select remark from ${remark.userId}`}
-                                />
+                                {!isCollaborator && (
+                                    <Checkbox
+                                        id={`select-remark-${remark.id}`}
+                                        className="mt-1"
+                                        checked={selectedRemarkIds.includes(remark.id)}
+                                        onCheckedChange={(checked) => handleSelectRemark(remark.id, !!checked)}
+                                        aria-label={`Select remark from ${remark.userId}`}
+                                    />
+                                )}
                                 <Avatar className="h-8 w-8 border">
                                     <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
                                 </Avatar>
@@ -276,10 +280,12 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
                                                         <span className="sr-only">Edit</span>
                                                     </Button>
                                                 )}
-                                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleDeleteClick(remark)}>
-                                                    <Trash2 className="h-3 w-3" />
-                                                    <span className="sr-only">Delete</span>
-                                                </Button>
+                                                {!isCollaborator && (
+                                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => handleDeleteClick(remark)}>
+                                                        <Trash2 className="h-3 w-3" />
+                                                        <span className="sr-only">Delete</span>
+                                                    </Button>
+                                                )}
                                             </div>
                                         )}
                                     </div>

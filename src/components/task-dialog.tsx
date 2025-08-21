@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -47,9 +48,10 @@ interface TaskDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (task: Omit<Task, 'remarks'>) => void;
+  isCollaborator: boolean;
 }
 
-export function TaskDialog({ task, open, onOpenChange, onSave }: TaskDialogProps) {
+export function TaskDialog({ task, open, onOpenChange, onSave, isCollaborator }: TaskDialogProps) {
   const form = useForm<TaskFormValues>({
     resolver: zodResolver(taskSchema),
     defaultValues: {

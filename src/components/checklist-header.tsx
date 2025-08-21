@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -28,9 +29,22 @@ import {
   FileDown,
   MoreVertical,
   WandSparkles,
+  Share2,
+  LogOut,
+  Users,
 } from 'lucide-react';
+import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
+import type { UserProfile } from '@/lib/types';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface ChecklistHeaderProps {
+  userProfile: UserProfile | null;
+  onSignOut: () => void;
   checklists: { id: string; name: string }[];
   activeChecklistId: string | null;
   onSwitch: (id: string) => void;
@@ -41,11 +55,16 @@ interface ChecklistHeaderProps {
   onExportPdf: () => void;
   onExportConfluence: () => void;
   onGetAiSuggestions: () => void;
+  onShare: () => void;
   progress: number;
   hasActiveChecklist: boolean;
+  isOwner: boolean;
+  collaborators: UserProfile[];
 }
 
 export function ChecklistHeader({
+  userProfile,
+  onSignOut,
   checklists,
   activeChecklistId,
   onSwitch,
@@ -56,8 +75,11 @@ export function ChecklistHeader({
   onExportPdf,
   onExportConfluence,
   onGetAiSuggestions,
+  onShare,
   progress,
   hasActiveChecklist,
+  isOwner,
+  collaborators,
 }: ChecklistHeaderProps) {
   return (
     <header className="sticky top-0 z-10 flex flex-col items-center justify-between gap-4 border-b border-border bg-background/80 p-4 backdrop-blur-sm no-print">
@@ -105,7 +127,7 @@ export function ChecklistHeader({
           <Button onClick={onAdd} size="sm">
             <Plus className="mr-2 h-4 w-4" /> New
           </Button>
-           <Button onClick={onGetAiSuggestions} size="sm" variant="outline" disabled={!hasActiveChecklist}>
+           <Button onClick={onGetAiSuggestions} size="sm" variant="outline" disabled={!hasActiveChecklist || !isOwner}>
             <WandSparkles className="mr-2 h-4 w-4" /> Suggest AI To-Dos
           </Button>
           <DropdownMenu>
@@ -116,6 +138,10 @@ export function ChecklistHeader({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={onShare} disabled={!hasActiveChecklist || !isOwner}>
+                <Share2 className="mr-2 h-4 w-4" /> Share
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>
                   <FileUp className="mr-2 h-4 w-4" /> Import...
@@ -142,7 +168,7 @@ export function ChecklistHeader({
                   <DropdownMenuItem onSelect={onExportConfluence}>for Confluence</DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
-              {activeChecklistId && (
+              {activeChecklistId && isOwner && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
@@ -155,12 +181,56 @@ export function ChecklistHeader({
               )}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                    <Avatar className="h-9 w-9">
+                        <AvatarImage src={userProfile?.photoURL || ''} alt={userProfile?.displayName || 'User'} />
+                        <AvatarFallback>{userProfile?.displayName?.charAt(0) || 'U'}</AvatarFallback>
+                    </Avatar>
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+                <DropdownMenuLabel>
+                    <p className="font-bold">{userProfile?.displayName}</p>
+                    <p className="text-xs text-muted-foreground font-normal">{userProfile?.email}</p>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onSelect={onSignOut}>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sign Out
+                </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
         </div>
       </div>
       {hasActiveChecklist && (
         <div className="w-full flex items-center gap-4 pt-2">
-            <Progress value={progress} className="w-full h-2" />
-            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">{Math.round(progress)}%</span>
+            <div className="flex items-center gap-2 flex-1">
+                <Progress value={progress} className="w-full h-2" />
+                <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">{Math.round(progress)}%</span>
+            </div>
+            {collaborators.length > 0 && (
+                <div className="flex items-center -space-x-2">
+                    <TooltipProvider>
+                        {collaborators.map(c => (
+                            <Tooltip key={c.uid}>
+                                <TooltipTrigger>
+                                    <Avatar className="h-6 w-6 border-2 border-background">
+                                        <AvatarImage src={c.photoURL || ''} />
+                                        <AvatarFallback>{c.displayName?.charAt(0) || 'C'}</AvatarFallback>
+                                    </Avatar>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                    <p>{c.displayName}</p>
+                                </TooltipContent>
+                            </Tooltip>
+                        ))}
+                    </TooltipProvider>
+                </div>
+            )}
         </div>
       )}
     </header>

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -51,7 +52,9 @@ interface TaskTableProps {
   onUpdate: (checklist: Partial<Checklist> & { id: string }) => void;
   onExecuteAiTodo: (task: Task, remark: Remark) => void;
   runningRemarkIds: string[];
-  onRunRefinedPrompt: (task: Task, parentRemark: Remark, topic: string) => void;
+  onRunRefinedPrompt: (task: Task, parentRemark: Remark) => void;
+  isOwner: boolean;
+  userId: string;
 }
 
 const statusColors: { [key in TaskStatus]: string } = {
@@ -69,11 +72,12 @@ const priorityColors: { [key in TaskPriority]: string } = {
 interface RemarkDisplayProps {
   remark: Remark;
   task: Task;
-  onRunRefinedPrompt: (task: Task, parentRemark: Remark, topic: string) => void;
+  onRunRefinedPrompt: (task: Task, parentRemark: Remark) => void;
   isTaskBusy: boolean;
+  isOwner: boolean;
 }
 
-const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy }: RemarkDisplayProps) => {
+const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy, isOwner }: RemarkDisplayProps) => {
   const { text } = remark;
 
   const promptExecutionMatch = text.match(/^\[prompt-execution\|(running|completed|failed)\]\s*(.*)/s);
@@ -187,7 +191,7 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy }: RemarkD
                 </Button>
                 
                 {promptGenMatch && (
-                  <Button variant="outline" size="sm" className="h-auto px-2 py-1 text-xs" onClick={() => onRunRefinedPrompt(task, remark, promptGenMatch[1].trim())} disabled={isTaskBusy}>
+                  <Button variant="outline" size="sm" className="h-auto px-2 py-1 text-xs" onClick={() => onRunRefinedPrompt(task, remark)} disabled={isTaskBusy || !isOwner}>
                      <WandSparkles className="mr-1.5 h-3 w-3" />
                      Run Generated Prompt
                   </Button>
@@ -203,7 +207,7 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy }: RemarkD
   return <p className="text-sm text-foreground/90 whitespace-pre-wrap">{text}</p>;
 };
 
-export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkIds, onRunRefinedPrompt }: TaskTableProps) {
+export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkIds, onRunRefinedPrompt, isOwner, userId }: TaskTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [filters, setFilters] = useState({
@@ -432,10 +436,11 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                                     task={task} 
                                     onRunRefinedPrompt={onRunRefinedPrompt}
                                     isTaskBusy={isTaskBusy}
+                                    isOwner={isOwner}
                                   />
                                   {isPending && (
                                     <div className="mt-2">
-                                        <Button size="sm" variant="outline" onClick={() => onExecuteAiTodo(task, remark)} disabled={isRunning || isTaskBusy}>
+                                        <Button size="sm" variant="outline" onClick={() => onExecuteAiTodo(task, remark)} disabled={isRunning || isTaskBusy || !isOwner}>
                                             {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
                                             {isRunning ? 'Running...' : 'Run this To-Do'}
                                         </Button>
@@ -467,17 +472,19 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => openTaskDialog(task)} disabled={task.status === 'complete'}>
+                          <DropdownMenuItem onSelect={() => openTaskDialog(task)}>
                               Edit Task
                           </DropdownMenuItem>
                           <DropdownMenuItem onSelect={() => openRemarksSheet(task)}>
                               <MessageSquare className="mr-2 h-4 w-4" />
-                              {task.status === 'complete' ? 'View Remarks' : 'Add Remark'}
+                              View/Add Remarks
                           </DropdownMenuItem>
-                          <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => handleDeleteTask(task.id)}>
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete Task
-                          </DropdownMenuItem>
+                          {isOwner && (
+                            <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => handleDeleteTask(task.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete Task
+                            </DropdownMenuItem>
+                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
