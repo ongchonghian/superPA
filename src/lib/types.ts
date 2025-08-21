@@ -45,6 +45,8 @@ export interface Invite {
     checklistName: string;
     inviterId: string;
     inviterName: string;
+    email: string; // The email of the user being invited
+    createdAt: any; // Firestore ServerTimestamp
 }
 
 

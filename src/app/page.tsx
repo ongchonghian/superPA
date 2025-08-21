@@ -214,7 +214,7 @@ export default function Home() {
   
   // Effect to handle incoming invites from URL
   useEffect(() => {
-      if (!user || !db) return;
+      if (!user || !user.email || !db) return;
 
       const handleInvite = async () => {
           const params = new URLSearchParams(window.location.search);
@@ -226,13 +226,26 @@ export default function Home() {
                   const inviteSnap = await getDoc(inviteRef);
                   if (inviteSnap.exists()) {
                       const inviteData = inviteSnap.data() as Invite;
+                      
+                      // Verify the invite is for the current user
+                      if (inviteData.email !== user.email) {
+                          toast({
+                              title: "Invitation Mismatch",
+                              description: "This invitation is intended for a different user.",
+                              variant: "destructive",
+                          });
+                          return;
+                      }
+
                       const checklistRef = doc(db, 'checklists', inviteData.checklistId);
 
-                      await updateDoc(checklistRef, {
+                      // Add user to collaborators and delete invite in one transaction
+                      const batch = writeBatch(db);
+                      batch.update(checklistRef, {
                           collaboratorIds: arrayUnion(user.uid)
                       });
-
-                      await deleteDoc(inviteRef);
+                      batch.delete(inviteRef);
+                      await batch.commit();
 
                       toast({
                           title: "Invitation Accepted!",
@@ -365,16 +378,12 @@ export default function Home() {
 
   // Effect to fetch collaborator profiles
   useEffect(() => {
-    if (!activeChecklist || !activeChecklist.collaboratorIds || activeChecklist.collaboratorIds.length === 0 || !db) {
-        if (activeChecklist && activeChecklist.ownerId && userProfile && activeChecklist.ownerId === userProfile.uid) {
-            setUsers([userProfile]);
-        } else {
-            setUsers([]);
-        }
+    if (!activeChecklist || (!activeChecklist.collaboratorIds && !activeChecklist.ownerId) || !db) {
+        setUsers([]);
         return;
     }
-    const allUserIds = [activeChecklist.ownerId, ...activeChecklist.collaboratorIds];
-    const uniqueUserIds = [...new Set(allUserIds)];
+    const allUserIds = [activeChecklist.ownerId, ...(activeChecklist.collaboratorIds || [])];
+    const uniqueUserIds = [...new Set(allUserIds)].filter(id => !!id);
     
     if (uniqueUserIds.length === 0) {
         setUsers([]);
@@ -391,7 +400,7 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [activeChecklist, toast, userProfile]);
+  }, [activeChecklist, toast]);
 
   // Effect to handle viewing a report
   useEffect(() => {
@@ -1500,7 +1509,7 @@ export default function Home() {
     return <LoginScreen onSignIn={handleSignIn} />;
   }
 
-  if (isLoading && !activeChecklistId) {
+  if (isLoading && !activeChecklist) {
     return <Loading />;
   }
 
