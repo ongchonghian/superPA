@@ -60,6 +60,7 @@ export interface Document {
 export interface AppSettings {
   apiKey: string;
   model: GeminiModel | string; // Allow string for flexibility, but prefer GeminiModel
+  rerunTimeout: number; // in minutes
 }
 
 declare global {

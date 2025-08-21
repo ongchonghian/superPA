@@ -44,7 +44,7 @@ export async function executeAiTodo(input: ExecuteAiTodoInput): Promise<ExecuteA
       inputSchema: ExecuteAiTodoInputSchema,
       outputSchema: ExecuteAiTodoOutputSchema,
     },
-    async (input) => {
+    async (flowInput) => {
       // Schema for prompt generation
       const RefinedPromptOutputSchema = z.object({
         refinedPrompt: z.string().describe("The complete, optimized prompt for the target LLM."),
@@ -159,15 +159,15 @@ Based on all the provided context, generate a detailed response in Markdown. You
 `,
       });
 
-      const isPromptGeneration = /generate a( refined)? prompt|design a prompt/i.test(input.aiTodoText);
-      const isPromptExecution = /^execute the refined prompt to/i.test(input.aiTodoText);
+      const isPromptGeneration = /generate a( refined)? prompt|design a prompt/i.test(flowInput.aiTodoText);
+      const isPromptExecution = /^execute the refined prompt to/i.test(flowInput.aiTodoText);
 
       if (isPromptGeneration) {
-          const topicMatch = input.aiTodoText.match(/to (.*)/i);
-          const topic = topicMatch ? topicMatch[1] : input.aiTodoText;
+          const topicMatch = flowInput.aiTodoText.match(/to (.*)/i);
+          const topic = topicMatch ? topicMatch[1] : flowInput.aiTodoText;
 
           const { output } = await generateRefinedPrompt({
-              problem: input.taskDescription,
+              problem: flowInput.taskDescription,
               topic: topic,
           });
 
@@ -197,12 +197,12 @@ Based on all the provided context, generate a detailed response in Markdown. You
               summary,
           };
       } else if (isPromptExecution) {
-          const topicMatch = input.aiTodoText.match(/^execute the refined prompt to (.*)/i);
-          const topic = topicMatch ? topicMatch[1].trim() : input.aiTodoText.replace(/^execute the refined prompt to /, '').trim();
+          const topicMatch = flowInput.aiTodoText.match(/^execute the refined prompt to (.*)/i);
+          const topic = topicMatch ? topicMatch[1].trim() : flowInput.aiTodoText.replace(/^execute the refined prompt to /, '').trim();
           
           // Step 1: Re-generate the refined prompt to ensure we have it.
           const { output: refinedPromptOutput } = await generateRefinedPrompt({
-              problem: input.taskDescription,
+              problem: flowInput.taskDescription,
               topic: topic,
           });
 
@@ -234,7 +234,7 @@ Based on all the provided context, generate a detailed response in Markdown. You
           };
 
       } else {
-        const {output} = await prompt(input);
+        const {output} = await prompt(flowInput);
         return output!;
       }
     }

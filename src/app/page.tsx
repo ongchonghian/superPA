@@ -97,6 +97,7 @@ export default function Home() {
   const [settings, setSettings] = useState<AppSettings>({
     apiKey: '',
     model: GEMINI_MODELS[0],
+    rerunTimeout: 5,
   });
 
   // Load settings from localStorage on initial render
@@ -105,6 +106,10 @@ export default function Home() {
       const savedSettings = localStorage.getItem('super-pa-settings');
       if (savedSettings) {
         const parsedSettings = JSON.parse(savedSettings);
+        // Ensure rerunTimeout has a default value if it's missing
+        if (typeof parsedSettings.rerunTimeout !== 'number') {
+          parsedSettings.rerunTimeout = 5;
+        }
         setSettings(parsedSettings);
       }
     } catch (error) {
@@ -1029,7 +1034,7 @@ export default function Home() {
         ...t,
         remarks: t.remarks.map(r => 
           r.id === remarkToExecute.id 
-              ? { ...r, text: r.text.replace(/\[ai-todo\|pending\]/, '[ai-todo|running]') } 
+              ? { ...r, text: r.text.replace(/\[ai-todo\|(pending|completed|failed)\]/, '[ai-todo|running]'), timestamp: new Date().toISOString() } 
               : r
         )
       };
@@ -1044,7 +1049,7 @@ export default function Home() {
             throw new Error("Could not find task to prepare for AI.");
         }
 
-        const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|(pending|running)\]\s*/, '').trim();
+        const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|(pending|running|completed|failed)\]\s*/, '').trim();
         const contextDocuments = await getContextDocumentsForAi();
         
         const result = await executeAiTodo({
@@ -1074,7 +1079,7 @@ export default function Home() {
             
             const updatedRemarks = t.remarks.map(r => 
                 r.id === remarkToExecute.id 
-                ? { ...r, text: r.text.replace('[ai-todo|running]', '[ai-todo|completed]') } 
+                ? { ...r, text: r.text.replace('[ai-todo|running]', '[ai-todo|completed]'), timestamp: new Date().toISOString() } 
                 : r
             );
             
@@ -1102,7 +1107,7 @@ export default function Home() {
 
             const updatedRemarks = t.remarks.map(r => {
                 if (r.id === remarkToExecute.id) {
-                    return { ...r, text: r.text.replace(/\[ai-todo\|(pending|running)\]/, '[ai-todo|failed]') };
+                    return { ...r, text: r.text.replace(/\[ai-todo\|(pending|running)\]/, '[ai-todo|failed]'), timestamp: new Date().toISOString() };
                 }
                 return r;
             });
@@ -1547,6 +1552,7 @@ export default function Home() {
               runningRemarkIds={runningRemarkIds}
               isOwner={isOwner}
               userId={user.uid}
+              settings={settings}
             />
           </>
         ) : (

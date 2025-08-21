@@ -23,7 +23,7 @@ import {
 import { GEMINI_MODELS } from '@/lib/data';
 import type { AppSettings } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
-import { KeyRound } from 'lucide-react';
+import { KeyRound, Timer } from 'lucide-react';
 
 interface SettingsDialogProps {
   open: boolean;
@@ -95,6 +95,24 @@ export function SettingsDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+           <div className="space-y-2">
+            <Label htmlFor="rerun-timeout">Re-run Timeout (minutes)</Label>
+            <Input
+              id="rerun-timeout"
+              type="number"
+              min="1"
+              placeholder="e.g., 5"
+              value={settings.rerunTimeout || 5}
+              onChange={(e) => setSettings({ ...settings, rerunTimeout: parseInt(e.target.value, 10) || 5 })}
+            />
+             <Alert className="mt-2" variant="default">
+                <Timer className="h-4 w-4" />
+                <AlertTitle>Task Re-run Configuration</AlertTitle>
+                <AlertDescription>
+                  This sets the time in minutes after which a &quot;Retry&quot; button will appear on completed AI To-Dos, allowing you to run them again.
+                </AlertDescription>
+            </Alert>
           </div>
         </div>
         <DialogFooter>

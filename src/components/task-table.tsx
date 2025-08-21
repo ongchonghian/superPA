@@ -38,9 +38,10 @@ import {
   ArrowUpRight,
   Loader2,
   CornerDownRight,
+  History,
 } from 'lucide-react';
-import type { Checklist, Task, TaskPriority, TaskStatus, Remark } from '@/lib/types';
-import { format, parseISO, formatDistanceToNow, isSameDay } from 'date-fns';
+import type { Checklist, Task, TaskPriority, TaskStatus, Remark, AppSettings } from '@/lib/types';
+import { format, parseISO, formatDistanceToNow, isSameDay, addMinutes, isAfter } from 'date-fns';
 import {PRIORITIES, STATUSES} from '@/lib/data';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -55,6 +56,7 @@ interface TaskTableProps {
   onRunRefinedPrompt: (task: Task, parentRemark: Remark) => void;
   isOwner: boolean;
   userId: string;
+  settings: AppSettings;
 }
 
 const statusColors: { [key in TaskStatus]: string } = {
@@ -73,12 +75,14 @@ interface RemarkDisplayProps {
   remark: Remark;
   task: Task;
   onRunRefinedPrompt: (task: Task, parentRemark: Remark) => void;
+  onExecuteAiTodo: (task: Task, remark: Remark) => void;
   isTaskBusy: boolean;
   isOwner: boolean;
+  settings: AppSettings;
 }
 
-const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy, isOwner }: RemarkDisplayProps) => {
-  const { text } = remark;
+const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTaskBusy, isOwner, settings }: RemarkDisplayProps) => {
+  const { text, timestamp } = remark;
 
   const promptExecutionMatch = text.match(/^\[prompt-execution\|(running|completed|failed)\]\s*(.*)/s);
   if (promptExecutionMatch) {
@@ -134,17 +138,26 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy, isOwner }
     const status = newAiTodoMatch[1];
     const todoText = newAiTodoMatch[2].trim();
     
+    const isRunning = status === 'running';
+    const isCompleted = status === 'completed';
+    
+    const completedTime = parseISO(timestamp);
+    const retryTime = addMinutes(completedTime, settings.rerunTimeout || 5);
+    const canRetryCompleted = isAfter(new Date(), retryTime);
+
+    const showRetryButton = isRunning || (isCompleted && canRetryCompleted);
+    
     const statusPill = (
         <span className={`capitalize px-1.5 py-0.5 text-xs rounded-full font-medium ${
             status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300' :
-            status === 'running' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' :
-            status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' :
+            isRunning ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' :
+            isCompleted ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' :
             'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
         }`}>
             {status}
         </span>
     );
-
+    
     return (
       <div className="p-2 mt-1 rounded-lg border border-accent/30 bg-accent/10">
         <div className="flex items-start gap-2.5">
@@ -155,6 +168,19 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy, isOwner }
                 {statusPill}
             </div>
             <p className="text-sm text-foreground/90 whitespace-pre-wrap">{todoText}</p>
+            {isRunning && (
+                <p className="text-xs text-muted-foreground mt-2">
+                    Started {formatDistanceToNow(new Date(timestamp), { addSuffix: true })}. You can retry in {settings.rerunTimeout || 5} minutes if it seems stuck.
+                </p>
+            )}
+            {showRetryButton && (
+                 <div className="mt-2">
+                    <Button size="sm" variant="outline" onClick={() => onExecuteAiTodo(task, remark)} disabled={isTaskBusy || !isOwner}>
+                        <History className="mr-2 h-4 w-4" />
+                        Run this To-Do (Retry)
+                    </Button>
+                </div>
+            )}
           </div>
         </div>
       </div>
@@ -207,7 +233,7 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, isTaskBusy, isOwner }
   return <p className="text-sm text-foreground/90 whitespace-pre-wrap">{text}</p>;
 };
 
-export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkIds, onRunRefinedPrompt, isOwner, userId }: TaskTableProps) {
+export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkIds, onRunRefinedPrompt, isOwner, userId, settings }: TaskTableProps) {
   const [sortKey, setSortKey] = useState<SortKey>('dueDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [filters, setFilters] = useState({
@@ -435,8 +461,10 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                                     remark={remark} 
                                     task={task} 
                                     onRunRefinedPrompt={onRunRefinedPrompt}
+                                    onExecuteAiTodo={onExecuteAiTodo}
                                     isTaskBusy={isTaskBusy}
                                     isOwner={isOwner}
+                                    settings={settings}
                                   />
                                   {isPending && (
                                     <div className="mt-2">
