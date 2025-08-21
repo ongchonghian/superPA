@@ -1,3 +1,4 @@
+
 'use client';
 
 import { AlertCircle } from 'lucide-react';
@@ -8,8 +9,8 @@ export function FirebaseNotConfigured({ missingKeys, authMethodDisabled }: { mis
   const getTitleAndDescription = () => {
     if (authMethodDisabled) {
       return {
-        title: "Anonymous Sign-In Is Disabled",
-        description: "Your app is correctly configured, but the authentication method it uses (Anonymous Sign-In) has not been enabled in your Firebase project. Please enable it using the checklist below."
+        title: "Google Sign-In Is Disabled",
+        description: "Your app is correctly configured, but the authentication method it uses (Google Sign-In) has not been enabled in your Firebase project. Please enable it using the checklist below."
       };
     }
     if (missingKeys && missingKeys.length > 0) {
