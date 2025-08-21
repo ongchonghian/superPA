@@ -1,5 +1,6 @@
 
 
+
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -82,7 +83,7 @@ interface RemarkDisplayProps {
 }
 
 const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTaskBusy, isOwner, settings }: RemarkDisplayProps) => {
-  const { text, timestamp } = remark;
+  const { id, text, timestamp } = remark;
 
   const promptExecutionMatch = text.match(/^\[prompt-execution\|(running|completed|failed)\]\s*(.*)/s);
   if (promptExecutionMatch) {
@@ -111,7 +112,7 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTa
     };
 
     return (
-      <div className="p-2 mt-1 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20">
+      <div id={`remark-${id}`} className="p-2 mt-1 rounded-lg border border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-900/20">
         <div className="flex items-start gap-2.5">
           <CornerDownRight className="h-4 w-4 mt-0.5 text-purple-600 dark:text-purple-400 flex-shrink-0" />
           <div className="flex-1">
@@ -159,7 +160,7 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTa
     );
     
     return (
-      <div className="p-2 mt-1 rounded-lg border border-accent/30 bg-accent/10">
+      <div id={`remark-${id}`} className="p-2 mt-1 rounded-lg border border-accent/30 bg-accent/10">
         <div className="flex items-start gap-2.5">
           <WandSparkles className="h-4 w-4 mt-0.5 text-accent flex-shrink-0" />
           <div className="flex-1">
@@ -204,7 +205,7 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTa
     const promptGenMatch = text.match(promptGenSummaryRegex);
 
     return (
-      <div className="p-2 mt-1 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
+      <div id={`remark-${id}`} className="p-2 mt-1 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
         <div className="flex items-start gap-2.5">
           <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-600 dark:text-green-400 flex-shrink-0" />
           <div className="flex-1">
@@ -230,7 +231,7 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTa
   }
 
   // Render standard text
-  return <p className="text-sm text-foreground/90 whitespace-pre-wrap">{text}</p>;
+  return <p id={`remark-${id}`} className="text-sm text-foreground/90 whitespace-pre-wrap">{text}</p>;
 };
 
 export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkIds, onRunRefinedPrompt, isOwner, userId, settings }: TaskTableProps) {

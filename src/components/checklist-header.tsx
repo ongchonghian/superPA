@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -32,15 +33,18 @@ import {
   Share2,
   LogOut,
   Settings,
+  Bell,
+  FileText,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
-import type { UserProfile } from '@/lib/types';
+import type { UserProfile, Notification } from '@/lib/types';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { Badge } from './ui/badge';
 
 interface ChecklistHeaderProps {
   userProfile: UserProfile | null;
@@ -61,6 +65,8 @@ interface ChecklistHeaderProps {
   hasActiveChecklist: boolean;
   isOwner: boolean;
   collaborators: UserProfile[];
+  notifications: Notification[];
+  onNotificationClick: (notification: Notification) => void;
 }
 
 export function ChecklistHeader({
@@ -82,7 +88,11 @@ export function ChecklistHeader({
   hasActiveChecklist,
   isOwner,
   collaborators,
+  notifications,
+  onNotificationClick,
 }: ChecklistHeaderProps) {
+  const unreadNotifications = notifications.filter(n => !n.read);
+
   return (
     <header className="sticky top-0 z-10 flex flex-col items-center justify-between gap-4 border-b border-border bg-background/80 p-4 backdrop-blur-sm no-print">
       <div className="flex w-full flex-wrap items-center justify-between gap-4">
@@ -180,6 +190,39 @@ export function ChecklistHeader({
                     <Trash2 className="mr-2 h-4 w-4" /> Delete Current Checklist
                   </DropdownMenuItem>
                 </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" className="relative h-9 w-9">
+                <Bell className="h-4 w-4" />
+                {unreadNotifications.length > 0 && (
+                  <Badge className="absolute -top-1 -right-1 h-4 w-4 justify-center p-0">{unreadNotifications.length}</Badge>
+                )}
+                <span className="sr-only">Notifications</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-80">
+              <DropdownMenuLabel>Notifications</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {unreadNotifications.length > 0 ? (
+                unreadNotifications.map(notification => (
+                  <DropdownMenuItem key={notification.id} onSelect={() => onNotificationClick(notification)}>
+                    <FileText className="mr-2 h-4 w-4" />
+                    <div className="flex-1 overflow-hidden">
+                      <p className="text-xs font-semibold">New Report Ready</p>
+                      <p className="truncate text-xs text-muted-foreground">
+                        For task: &quot;{notification.taskDescription}&quot;
+                      </p>
+                    </div>
+                  </DropdownMenuItem>
+                ))
+              ) : (
+                <DropdownMenuItem disabled>
+                  <p className="text-sm text-muted-foreground text-center w-full py-2">No new notifications</p>
+                </DropdownMenuItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>

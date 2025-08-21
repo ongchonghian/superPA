@@ -1,10 +1,11 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { ChecklistHeader } from '@/components/checklist-header';
 import { TaskTable } from '@/components/task-table';
-import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document, UserProfile, Invite, AppSettings } from '@/lib/types';
+import type { Checklist, Task, TaskStatus, TaskPriority, Remark, Document, UserProfile, Invite, AppSettings, Notification } from '@/lib/types';
 import { useToast } from "@/hooks/use-toast";
 import Loading from './loading';
 import { isFirebaseConfigured, missingFirebaseConfigKeys, db, storage, auth, googleProvider } from '@/lib/firebase';
@@ -70,6 +71,7 @@ export default function Home() {
   const [firestorePermissionError, setFirestorePermissionError] = useState(false);
   const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
+  const previousChecklist = useRef<Checklist | null>(null);
   const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -99,6 +101,7 @@ export default function Home() {
     model: GEMINI_MODELS[0],
     rerunTimeout: 5,
   });
+  const [notifications, setNotifications] = useState<Notification[]>([]);
 
   // Load settings from localStorage on initial render
   useEffect(() => {
@@ -342,6 +345,7 @@ export default function Home() {
       if (doc.exists()) {
         const newChecklist = { id: doc.id, ...doc.data() } as Checklist;
         setActiveChecklist(newChecklist);
+        previousChecklist.current = newChecklist;
       } else {
         // This can happen if the active checklist is deleted
         setActiveChecklist(null);
@@ -356,6 +360,37 @@ export default function Home() {
 
     return () => unsubscribe();
   }, [activeChecklistId, toast, authInitialized]);
+
+    // Effect to detect new reports and create notifications
+    useEffect(() => {
+      if (!activeChecklist || !previousChecklist.current) {
+        return;
+      }
+  
+      const oldRemarks = new Set(previousChecklist.current.tasks.flatMap(t => t.remarks.map(r => r.id)));
+  
+      activeChecklist.tasks.forEach(task => {
+        task.remarks.forEach(remark => {
+          if (!oldRemarks.has(remark.id) && remark.userId === 'ai_executor') {
+            const newNotification: Notification = {
+              id: `notif_${remark.id}`,
+              taskId: task.id,
+              remarkId: remark.id,
+              taskDescription: task.description,
+              timestamp: new Date().toISOString(),
+              read: false,
+            };
+            setNotifications(prev => [...prev, newNotification]);
+            toast({
+              title: "New Report Ready",
+              description: `A new AI report has been added to the task: "${task.description.substring(0, 30)}..."`,
+            });
+          }
+        });
+      });
+  
+      previousChecklist.current = activeChecklist;
+    }, [activeChecklist, toast]);
   
   // Effect to subscribe to documents associated with the active checklist
   useEffect(() => {
@@ -531,6 +566,7 @@ export default function Home() {
   
   const handleSwitchChecklist = useCallback((id: string) => {
     setActiveChecklistId(id);
+    setNotifications([]);
   }, []);
 
   const handleRequestDeleteChecklist = (id: string) => {
@@ -1489,6 +1525,20 @@ export default function Home() {
     toast({ title: "Collaborators Updated", description: "The list of collaborators has been updated."});
   };
 
+  const handleNotificationClick = (notification: Notification) => {
+    const remarkElement = document.getElementById(`remark-${notification.remarkId}`);
+    if (remarkElement) {
+      remarkElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Add a temporary highlight effect
+      remarkElement.classList.add('animate-pulse', 'bg-accent/20', 'rounded-lg');
+      setTimeout(() => {
+        remarkElement.classList.remove('animate-pulse', 'bg-accent/20', 'rounded-lg');
+      }, 3000);
+    }
+    setNotifications(prev => prev.filter(n => n.id !== notification.id));
+  };
+
+
   if (!authInitialized) {
     return <Loading />;
   }
@@ -1534,6 +1584,8 @@ export default function Home() {
         hasActiveChecklist={!!activeChecklist}
         isOwner={isOwner}
         collaborators={users.filter(u => u.uid !== user.uid)}
+        notifications={notifications}
+        onNotificationClick={handleNotificationClick}
       />
       <main className="p-4 sm:p-6 lg:p-8">
         <input

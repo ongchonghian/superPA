@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState } from 'react';
@@ -19,6 +20,7 @@ import { addDoc, collection, serverTimestamp, query, where, getDocs, writeBatch 
 import { Copy, Check, Trash2, Send } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Label } from './ui/label';
+import { ScrollArea } from './ui/scroll-area';
 
 interface ShareChecklistDialogProps {
   open: boolean;
@@ -125,41 +127,43 @@ export function ShareChecklistDialog({
         </DialogHeader>
         <div className="py-2 space-y-6">
             <div className="space-y-3">
-                <h3 className="text-sm font-medium">People with access</h3>
-                <div className="space-y-3 max-h-48 overflow-y-auto pr-3">
-                    {/* Owner */}
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                            <Avatar className="h-9 w-9">
-                                <AvatarImage src={userProfile.photoURL || undefined} />
-                                <AvatarFallback>{userProfile.displayName?.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                                <p className="text-sm font-semibold">{userProfile.displayName}</p>
-                                <p className="text-xs text-muted-foreground">{userProfile.email}</p>
-                            </div>
-                        </div>
-                        <span className="text-xs text-muted-foreground font-medium">Owner</span>
-                    </div>
-                    {/* Collaborators */}
-                    {collaborators.map(c => (
-                        <div key={c.uid} className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <Avatar className="h-9 w-9">
-                                    <AvatarImage src={c.photoURL || undefined} />
-                                    <AvatarFallback>{c.displayName?.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <div>
-                                    <p className="text-sm font-semibold">{c.displayName}</p>
-                                    <p className="text-xs text-muted-foreground">{c.email}</p>
-                                </div>
-                            </div>
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleRemoveCollaborator(c.uid)}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                            </Button>
-                        </div>
-                    ))}
-                </div>
+                <h3 className="text-sm font-medium text-foreground">People with access</h3>
+                <ScrollArea className="max-h-48 pr-3 -mr-3">
+                  <div className="space-y-3">
+                      {/* Owner */}
+                      <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                              <Avatar className="h-9 w-9">
+                                  <AvatarImage src={userProfile.photoURL || undefined} />
+                                  <AvatarFallback>{userProfile.displayName?.charAt(0) || 'U'}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                  <p className="text-sm font-semibold">{userProfile.displayName}</p>
+                                  <p className="text-xs text-muted-foreground">{userProfile.email}</p>
+                              </div>
+                          </div>
+                          <span className="text-xs text-muted-foreground font-medium">Owner</span>
+                      </div>
+                      {/* Collaborators */}
+                      {collaborators.map(c => (
+                          <div key={c.uid} className="flex items-center justify-between">
+                              <div className="flex items-center gap-3">
+                                  <Avatar className="h-9 w-9">
+                                      <AvatarImage src={c.photoURL || undefined} />
+                                      <AvatarFallback>{c.displayName?.charAt(0) || 'C'}</AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                      <p className="text-sm font-semibold">{c.displayName}</p>
+                                      <p className="text-xs text-muted-foreground">{c.email}</p>
+                                  </div>
+                              </div>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleRemoveCollaborator(c.uid)}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                          </div>
+                      ))}
+                  </div>
+                </ScrollArea>
             </div>
             <div className="space-y-3">
                 <Label htmlFor="invite-email" className="text-sm font-medium">Invite new collaborator</Label>
@@ -172,7 +176,7 @@ export function ShareChecklistDialog({
                         onChange={(e) => setInviteEmail(e.target.value)}
                         disabled={isCreatingLink}
                     />
-                    <Button onClick={createInviteLink} disabled={isCreatingLink} size="icon">
+                    <Button onClick={createInviteLink} disabled={isCreatingLink || !inviteEmail} size="icon">
                         <Send className="h-4 w-4" />
                         <span className="sr-only">Send Invite</span>
                     </Button>

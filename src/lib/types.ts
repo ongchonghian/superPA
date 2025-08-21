@@ -1,4 +1,5 @@
 
+
 import {PRIORITIES, STATUSES, GEMINI_MODELS} from './data';
 
 export type TaskStatus = (typeof STATUSES)[number];
@@ -57,6 +58,15 @@ export interface Document {
   storagePath: string; // Path to the file in Firebase Storage
   createdAt: string; // ISO string for Firestore compatibility
   mimeType: string; // The MIME type of the file
+}
+
+export interface Notification {
+  id: string;
+  taskId: string;
+  remarkId: string;
+  taskDescription: string;
+  timestamp: string;
+  read: boolean;
 }
 
 export interface AppSettings {
