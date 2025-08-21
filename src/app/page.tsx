@@ -854,14 +854,16 @@ export default function Home() {
     const executionToast = toast({ title: "AI Execution Started", description: "The AI is now working on your to-do." });
     setRunningRemarkIds(prev => [...prev, remarkToExecute.id]);
 
-    let tasksWithRunning = activeChecklist.tasks.map(t => {
+    const tasksWithRunning = activeChecklist.tasks.map(t => {
       if (t.id !== task.id) return t;
-      const newRemarks = t.remarks.map(r => 
+      return {
+        ...t,
+        remarks: t.remarks.map(r => 
           r.id === remarkToExecute.id 
               ? { ...r, text: r.text.replace(/\[ai-todo\|pending\]/, '[ai-todo|running]') } 
               : r
-      );
-      return { ...t, remarks: newRemarks };
+        )
+      };
     });
 
     try {
@@ -917,7 +919,6 @@ export default function Home() {
     } catch (error: any) {
         handleAiError(error, executionToast.id);
         
-        // Use a local copy of tasks to revert state, avoiding another DB read which can be stale
         const revertTasks = tasksWithRunning.map(t => {
             if (t.id !== task.id) return t;
             
@@ -974,19 +975,15 @@ export default function Home() {
     setRunningRemarkIds(prev => [...prev, childRemark.id]);
     const executionToast = toast({ title: "Prompt Execution Started", description: "The AI is now executing the refined prompt." });
     
-    const tasksWithNewChildTodo = activeChecklist.tasks.map(t => {
-        if (t.id === taskToUpdate.id) {
-            return { ...t, remarks: [...t.remarks, childRemark] };
-        }
-        return t;
+    const tasksWithRunning = activeChecklist.tasks.map(t => {
+      if (t.id === taskToUpdate.id) {
+        const remarksWithChild = [...t.remarks, childRemark];
+        const remarksWithRunning = remarksWithChild.map(r => r.id === childRemark.id ? {...r, text: r.text.replace('[prompt-execution|pending]', '[prompt-execution|running]')} : r);
+        return { ...t, remarks: remarksWithRunning };
+      }
+      return t;
     });
 
-    const tasksWithRunning = tasksWithNewChildTodo.map(t => {
-        if (t.id !== taskToUpdate.id) return t;
-        const newRemarks = t.remarks.map(r => r.id === childRemark.id ? {...r, text: r.text.replace('[prompt-execution|pending]', '[prompt-execution|running]')} : r)
-        return { ...t, remarks: newRemarks };
-    });
-    
     try {
         const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
         await updateDoc(checklistDocRef, { tasks: tasksWithRunning });
@@ -1253,6 +1250,45 @@ export default function Home() {
     }
   }, [activeChecklist, storage, handleUpdateTask, toast]);
 
+  const handleDeleteMultipleRemarks = useCallback(async (taskToUpdate: Task, remarkIdsToDelete: string[]) => {
+    if (!activeChecklist || !storage) return;
+  
+    const remarksToDelete = new Set(remarkIdsToDelete);
+    const reportsToDelete: string[] = [];
+  
+    // Find all reports associated with the remarks to be deleted
+    taskToUpdate.remarks.forEach(remark => {
+      if (remarksToDelete.has(remark.id)) {
+        const storageLinkRegex = /\[View results\]\(storage:\/\/([^)]+)\)/;
+        const storageMatch = remark.text.match(storageLinkRegex);
+        if (storageMatch) {
+          reportsToDelete.push(storageMatch[1]);
+        }
+      }
+    });
+  
+    // Delete reports from Storage
+    const deleteReportPromises = reportsToDelete.map(path => {
+      const fileRef = storageRef(storage, path);
+      return deleteObject(fileRef).catch(error => {
+        if (error.code !== 'storage/object-not-found') {
+          console.error("Error deleting report from storage:", error);
+          toast({ title: "Storage Error", description: `Could not delete report: ${path}`, variant: "destructive" });
+        }
+      });
+    });
+  
+    await Promise.all(deleteReportPromises);
+  
+    // Filter out the deleted remarks from the task
+    const updatedRemarks = taskToUpdate.remarks.filter(r => !remarksToDelete.has(r.id));
+    const updatedTask = { ...taskToUpdate, remarks: updatedRemarks };
+    handleUpdateTask(updatedTask);
+  
+    toast({ title: "Remarks Deleted", description: `${remarkIdsToDelete.length} remark(s) have been deleted.` });
+  
+  }, [activeChecklist, storage, handleUpdateTask, toast]);
+
 
   if (authError || authMethodDisabled) {
     return <FirebaseNotConfigured missingKeys={missingFirebaseConfigKeys} authMethodDisabled={authMethodDisabled} />;
@@ -1380,6 +1416,7 @@ export default function Home() {
         onOpenChange={setIsRemarksSheetOpen}
         onUpdateTask={handleUpdateTask}
         onDeleteRemark={handleDeleteRemark}
+        onDeleteMultipleRemarks={handleDeleteMultipleRemarks}
         assignees={assignees}
         userId={userId || undefined}
       />

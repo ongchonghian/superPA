@@ -24,6 +24,7 @@ import {
     PopoverAnchor,
 } from '@/components/ui/popover';
 import { Textarea } from './ui/textarea';
+import { Checkbox } from './ui/checkbox';
 
 interface TaskRemarksSheetProps {
   task: Task | null;
@@ -31,20 +32,53 @@ interface TaskRemarksSheetProps {
   onOpenChange: (open: boolean) => void;
   onUpdateTask: (task: Task) => void;
   onDeleteRemark: (task: Task, remark: Remark) => void;
+  onDeleteMultipleRemarks: (task: Task, remarkIds: string[]) => void;
   assignees: string[];
   userId?: string;
 }
 
-export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDeleteRemark, assignees = [], userId }: TaskRemarksSheetProps) {
+export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDeleteRemark, onDeleteMultipleRemarks, assignees = [], userId }: TaskRemarksSheetProps) {
     const [newRemark, setNewRemark] = useState('');
     const [mentionQuery, setMentionQuery] = useState('');
     const [isMentionPopoverOpen, setIsMentionPopoverOpen] = useState(false);
     const [editingRemarkId, setEditingRemarkId] = useState<string | null>(null);
     const [editingText, setEditingText] = useState('');
+    const [selectedRemarkIds, setSelectedRemarkIds] = useState<string[]>([]);
     
     const inputRef = useRef<HTMLInputElement>(null);
     const scrollAreaRef = useRef<HTMLDivElement>(null);
 
+    const flattenedRemarks = useMemo(() => {
+        if (!task) return [];
+
+        const list: {remark: Remark, level: number}[] = [];
+        const remarksMap = new Map<string, Remark[]>();
+        
+        task.remarks.forEach(remark => {
+            const parentId = remark.parentId || 'root';
+            if (!remarksMap.has(parentId)) {
+                remarksMap.set(parentId, []);
+            }
+            remarksMap.get(parentId)!.push(remark);
+        });
+        
+        remarksMap.forEach(children => {
+            children.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        });
+
+        const addChildrenToList = (parentId: string, level: number) => {
+            const children = remarksMap.get(parentId) || [];
+            children.forEach(child => {
+                list.push({ remark: child, level: level });
+                addChildrenToList(child.id, level + 1);
+            });
+        };
+        
+        addChildrenToList('root', 0);
+        return list;
+
+    }, [task]);
+    
     useEffect(() => {
         if (open && scrollAreaRef.current) {
             // Scroll to the bottom when the sheet opens or when new remarks are added/edited/deleted
@@ -54,13 +88,14 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
                 }
             }, 100);
         }
-    }, [open, task?.remarks]);
+    }, [open, task?.remarks, flattenedRemarks.length]);
 
     useEffect(() => {
-        // Reset editing state when the sheet is closed
+        // Reset state when the sheet is closed or task changes
         if (!open) {
             setEditingRemarkId(null);
             setEditingText('');
+            setSelectedRemarkIds([]);
         }
     }, [open]);
 
@@ -157,42 +192,35 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
         }, 0);
     };
 
-    const flattenedRemarks = useMemo(() => {
-        if (!task) return [];
+    const handleSelectRemark = (remarkId: string, isSelected: boolean) => {
+        setSelectedRemarkIds(prev => 
+            isSelected ? [...prev, remarkId] : prev.filter(id => id !== remarkId)
+        );
+    };
+    
+    const handleSelectAllRemarks = (isSelected: boolean) => {
+        if (isSelected) {
+            setSelectedRemarkIds(task?.remarks.map(r => r.id) || []);
+        } else {
+            setSelectedRemarkIds([]);
+        }
+    };
 
-        const list: {remark: Remark, level: number}[] = [];
-        const remarksMap = new Map<string, Remark[]>();
-        
-        task.remarks.forEach(remark => {
-            const parentId = remark.parentId || 'root';
-            if (!remarksMap.has(parentId)) {
-                remarksMap.set(parentId, []);
-            }
-            remarksMap.get(parentId)!.push(remark);
-        });
-        
-        remarksMap.forEach(children => {
-            children.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-        });
-
-        const addChildrenToList = (parentId: string, level: number) => {
-            const children = remarksMap.get(parentId) || [];
-            children.forEach(child => {
-                list.push({ remark: child, level: level });
-                addChildrenToList(child.id, level + 1);
-            });
-        };
-        
-        addChildrenToList('root', 0);
-        return list;
-
-    }, [task]);
+    const handleDeleteSelected = () => {
+        if (!task || selectedRemarkIds.length === 0) return;
+        if (window.confirm(`Are you sure you want to delete ${selectedRemarkIds.length} selected remark(s)? This cannot be undone.`)) {
+            onDeleteMultipleRemarks(task, selectedRemarkIds);
+            setSelectedRemarkIds([]);
+        }
+    };
 
     const filteredAssignees = assignees.filter(a => a && a.toLowerCase().includes(mentionQuery.toLowerCase()));
 
     if (!task) return null;
 
     const isComplete = task.status === 'complete';
+    const areAllSelected = task.remarks.length > 0 && selectedRemarkIds.length === task.remarks.length;
+    const isIndeterminate = selectedRemarkIds.length > 0 && selectedRemarkIds.length < task.remarks.length;
 
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
@@ -201,11 +229,34 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
                     <SheetTitle>Remarks for: {task.description}</SheetTitle>
                     <SheetDescription>View and add comments to this task. Type @ to mention a user.</SheetDescription>
                 </SheetHeader>
-                <ScrollArea className="flex-1 my-4 -mx-4 sm:-mx-6" viewportRef={scrollAreaRef}>
+                
+                {task.remarks.length > 0 && (
+                    <div className="flex items-center gap-3 px-4 sm:px-6 -mx-4 sm:-mx-6 py-2 border-y">
+                        <Checkbox 
+                            id="select-all-remarks"
+                            checked={areAllSelected}
+                            onCheckedChange={handleSelectAllRemarks}
+                            aria-label="Select all remarks"
+                            data-state={isIndeterminate ? 'indeterminate' : (areAllSelected ? 'checked' : 'unchecked')}
+                        />
+                        <label htmlFor="select-all-remarks" className="text-sm font-medium">
+                            {selectedRemarkIds.length > 0 ? `${selectedRemarkIds.length} selected` : 'Select All'}
+                        </label>
+                    </div>
+                )}
+
+                <ScrollArea className="flex-1 my-0 -mx-4 sm:-mx-6" viewportRef={scrollAreaRef}>
                     <div className="space-y-4 py-4 px-4 sm:px-6">
                         {flattenedRemarks.length > 0 ? (
                            flattenedRemarks.map(({ remark, level }) => (
                             <div key={remark.id} className="group flex items-start gap-3" style={{ paddingLeft: `${level * 1.5}rem` }}>
+                                <Checkbox
+                                    id={`select-remark-${remark.id}`}
+                                    className="mt-1"
+                                    checked={selectedRemarkIds.includes(remark.id)}
+                                    onCheckedChange={(checked) => handleSelectRemark(remark.id, !!checked)}
+                                    aria-label={`Select remark from ${remark.userId}`}
+                                />
                                 <Avatar className="h-8 w-8 border">
                                     <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
                                 </Avatar>
@@ -217,7 +268,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
                                                 {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
                                             </p>
                                         </div>
-                                        {editingRemarkId !== remark.id && !isComplete && (
+                                        {editingRemarkId !== remark.id && !isComplete && selectedRemarkIds.length === 0 && (
                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                 {remark.userId === userId && !remark.text.startsWith('[') && (
                                                     <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleEditStart(remark)}>
@@ -257,42 +308,52 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
                         )}
                     </div>
                 </ScrollArea>
-                <SheetFooter>
-                    <form
-                        onSubmit={(e) => { e.preventDefault(); handleAddRemark(); }}
-                        className="flex gap-2 w-full"
-                    >
-                        <Popover open={isMentionPopoverOpen && filteredAssignees.length > 0} onOpenChange={setIsMentionPopoverOpen}>
-                             <PopoverAnchor asChild>
-                                <Input 
-                                    ref={inputRef}
-                                    value={newRemark}
-                                    onChange={handleRemarkChange}
-                                    placeholder={isComplete ? "Task is complete" : "Add a remark..."}
-                                    autoComplete="off"
-                                    disabled={isComplete || !userId}
-                                />
-                             </PopoverAnchor>
-                             <PopoverContent className="w-[250px] p-1" align="start">
-                                <div className="flex flex-col gap-1">
-                                    {filteredAssignees.map(user => (
-                                        <Button
-                                            key={user}
-                                            variant="ghost"
-                                            className="w-full justify-start h-8 px-2"
-                                            onClick={() => handleMentionSelect(user)}
-                                        >
-                                            {user}
-                                        </Button>
-                                    ))}
-                                </div>
-                            </PopoverContent>
-                        </Popover>
-                        <Button type="submit" disabled={!newRemark.trim() || isComplete || !userId}>
-                            <Send className="h-4 w-4" />
-                            <span className="sr-only">Send</span>
-                        </Button>
-                    </form>
+                <SheetFooter className="mt-auto">
+                    {selectedRemarkIds.length > 0 ? (
+                        <div className="flex w-full justify-between items-center">
+                            <span className="text-sm text-muted-foreground">{selectedRemarkIds.length} remark(s) selected</span>
+                            <Button variant="destructive" onClick={handleDeleteSelected}>
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete Selected
+                            </Button>
+                        </div>
+                    ) : (
+                        <form
+                            onSubmit={(e) => { e.preventDefault(); handleAddRemark(); }}
+                            className="flex gap-2 w-full"
+                        >
+                            <Popover open={isMentionPopoverOpen && filteredAssignees.length > 0} onOpenChange={setIsMentionPopoverOpen}>
+                                 <PopoverAnchor asChild>
+                                    <Input 
+                                        ref={inputRef}
+                                        value={newRemark}
+                                        onChange={handleRemarkChange}
+                                        placeholder={isComplete ? "Task is complete" : "Add a remark..."}
+                                        autoComplete="off"
+                                        disabled={isComplete || !userId}
+                                    />
+                                 </PopoverAnchor>
+                                 <PopoverContent className="w-[250px] p-1" align="start">
+                                    <div className="flex flex-col gap-1">
+                                        {filteredAssignees.map(user => (
+                                            <Button
+                                                key={user}
+                                                variant="ghost"
+                                                className="w-full justify-start h-8 px-2"
+                                                onClick={() => handleMentionSelect(user)}
+                                            >
+                                                {user}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </PopoverContent>
+                            </Popover>
+                            <Button type="submit" disabled={!newRemark.trim() || isComplete || !userId}>
+                                <Send className="h-4 w-4" />
+                                <span className="sr-only">Send</span>
+                            </Button>
+                        </form>
+                    )}
                 </SheetFooter>
             </SheetContent>
         </Sheet>
