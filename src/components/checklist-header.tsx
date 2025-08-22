@@ -67,6 +67,7 @@ interface ChecklistHeaderProps {
   collaborators: UserProfile[];
   notifications: Notification[];
   onNotificationClick: (notification: Notification) => void;
+  onNotificationsOpen: () => void;
 }
 
 export function ChecklistHeader({
@@ -90,6 +91,7 @@ export function ChecklistHeader({
   collaborators,
   notifications,
   onNotificationClick,
+  onNotificationsOpen,
 }: ChecklistHeaderProps) {
   const unreadNotifications = notifications.filter(n => !n.read);
 
@@ -194,7 +196,7 @@ export function ChecklistHeader({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu>
+          <DropdownMenu onOpenChange={(open) => open && onNotificationsOpen()}>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="icon" className="relative h-9 w-9">
                 <Bell className="h-4 w-4" />

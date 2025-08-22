@@ -72,7 +72,6 @@ export default function Home() {
   const [firestorePermissionError, setFirestorePermissionError] = useState(false);
   const [checklistMetas, setChecklistMetas] = useState<{ id: string; name: string }[]>([]);
   const [activeChecklist, setActiveChecklist] = useState<Checklist | null>(null);
-  const previousChecklist = useRef<Checklist | null>(null);
   const [activeChecklistId, setActiveChecklistId] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -346,11 +345,6 @@ export default function Home() {
       if (doc.exists()) {
         const newChecklist = { id: doc.id, ...doc.data() } as Checklist;
         setActiveChecklist(newChecklist);
-        
-        // This assignment will be used in the notification effect
-        if (!previousChecklist.current) {
-          previousChecklist.current = newChecklist;
-        }
       } else {
         // This can happen if the active checklist is deleted
         setActiveChecklist(null);
@@ -366,31 +360,28 @@ export default function Home() {
     return () => unsubscribe();
   }, [activeChecklistId, toast, authInitialized]);
 
-    // Effect to detect new reports and create notifications
+    // Effect to detect new reports and create notifications using localStorage
     useEffect(() => {
-      if (!activeChecklist || !previousChecklist.current || activeChecklist.id !== previousChecklist.current.id) {
-        // Reset previous checklist if active one changes
-        if (activeChecklist) previousChecklist.current = activeChecklist;
+      if (!activeChecklist || !user) {
+        setNotifications([]);
         return;
-      }
-      
-      const oldRemarksByTask = new Map<string, Set<string>>();
-      previousChecklist.current.tasks.forEach(task => {
-        oldRemarksByTask.set(task.id, new Set(task.remarks.map(r => r.id)));
-      });
+      };
 
+      const lastReadTimestampStr = localStorage.getItem(`super-pa-last-read-${user.uid}-${activeChecklist.id}`);
+      const lastReadTimestamp = lastReadTimestampStr ? new Date(lastReadTimestampStr) : new Date(0);
+      
       const newNotifications: Notification[] = [];
 
       activeChecklist.tasks.forEach(task => {
-        const oldRemarkIds = oldRemarksByTask.get(task.id) || new Set();
         task.remarks.forEach(remark => {
-          if (!oldRemarkIds.has(remark.id) && remark.userId === 'ai_executor') {
+          const remarkTimestamp = new Date(remark.timestamp);
+          if (remark.userId === 'ai_executor' && remarkTimestamp > lastReadTimestamp) {
             newNotifications.push({
               id: `notif_${remark.id}`,
               taskId: task.id,
               remarkId: remark.id,
               taskDescription: task.description,
-              timestamp: new Date().toISOString(),
+              timestamp: remark.timestamp,
               read: false,
             });
           }
@@ -398,15 +389,23 @@ export default function Home() {
       });
   
       if (newNotifications.length > 0) {
-        setNotifications(prev => [...prev, ...newNotifications]);
-        toast({
-          title: newNotifications.length > 1 ? "New Reports Ready" : "New Report Ready",
-          description: `An AI report has been added. Check your notifications.`,
+        setNotifications(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const trulyNew = newNotifications.filter(n => !existingIds.has(n.id));
+          return [...prev, ...trulyNew];
         });
       }
-  
-      previousChecklist.current = activeChecklist;
-    }, [activeChecklist, toast]);
+    }, [activeChecklist, user]);
+
+    const handleNotificationsOpen = useCallback(() => {
+      if (!user || !activeChecklistId) return;
+      
+      const now = new Date().toISOString();
+      localStorage.setItem(`super-pa-last-read-${user.uid}-${activeChecklistId}`, now);
+      
+      setNotifications([]);
+
+  }, [user, activeChecklistId]);
   
   // Effect to subscribe to documents associated with the active checklist
   useEffect(() => {
@@ -1140,7 +1139,7 @@ export default function Home() {
             
             const updatedRemarks = t.remarks.map(r => 
                 r.id === remarkToExecute.id 
-                ? { ...r, text: r.text.replace('[ai-todo|running]', '[ai-todo|completed]'), timestamp: new Date().toISOString() } 
+                ? { ...r, text: r.text.replace(/\[ai-todo\|(pending|completed|failed|running)\]/, '[ai-todo|completed]') } 
                 : r
             );
             
@@ -1168,7 +1167,7 @@ export default function Home() {
 
             const updatedRemarks = t.remarks.map(r => {
                 if (r.id === remarkToExecute.id) {
-                    return { ...r, text: r.text.replace(/\[ai-todo\|(pending|running)\]/, '[ai-todo|failed]'), timestamp: new Date().toISOString() };
+                    return { ...r, text: r.text.replace(/\[ai-todo\|(pending|running|completed)\]/, '[ai-todo|failed]') };
                 }
                 return r;
             });
@@ -1602,6 +1601,7 @@ export default function Home() {
         collaborators={users.filter(u => u.uid !== user.uid)}
         notifications={notifications}
         onNotificationClick={handleNotificationClick}
+        onNotificationsOpen={handleNotificationsOpen}
       />
       <main className="p-4 sm:p-6 lg:p-8">
         <input
