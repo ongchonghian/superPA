@@ -39,12 +39,9 @@ export async function executeAiTodo(input: ExecuteAiTodoInput): Promise<ExecuteA
   const ai = configureAi(input.apiKey, input.model);
   
   // This regex is used to determine if the task is a prompt engineering task.
-  // It is used here to pass a boolean to the prompt, and also used inside the prompt.
   const promptEngineeringRegex = /Refine the prompt for: (.*)/s;
   const isPromptEngineeringTask = promptEngineeringRegex.test(input.aiTodoText);
-  const promptEngineeringTopic = input.aiTodoText.match(promptEngineeringRegex)?.[1] || '';
-
-
+  
   const executeAiTodoFlow = ai.defineFlow(
     {
       name: 'executeAiTodoFlow',
@@ -54,7 +51,11 @@ export async function executeAiTodo(input: ExecuteAiTodoInput): Promise<ExecuteA
     async (flowInput) => {
       const prompt = ai.definePrompt({
         name: 'executeAiTodoPrompt',
-        input: {schema: ExecuteAiTodoInputSchema},
+        input: {schema: z.object({
+          ...ExecuteAiTodoInputSchema.shape,
+          isPromptEngineeringTask: z.boolean(),
+          promptEngineeringTopic: z.string().optional(),
+        })},
         output: {schema: ExecuteAiTodoOutputSchema},
         prompt: `You are an expert-level AI assistant. Your goal is to provide a comprehensive, detailed, and well-structured response in Markdown format that directly fulfills the user's request, and then provide a brief summary of your output.
 
@@ -78,7 +79,7 @@ Discussion History (includes user remarks and other AI to-dos):
 --- END OF TASK CONTEXT ---
 
 --- YOUR ASSIGNMENT ---
-{{#if ${isPromptEngineeringTask}}}
+{{#if isPromptEngineeringTask}}
 You are an expert in "prompt engineering." Your task is to act as a thought-partner to help a user refine a concept into a better AI prompt.
 
 The user wants to generate a good prompt for the following topic:
@@ -105,8 +106,23 @@ Based on all the provided context, generate a detailed response in Markdown. You
 After generating the detailed response, provide a simple, one-sentence summary of what you did.
 `,
       });
+      
+      const promptEngineeringTopic = isPromptEngineeringTask ? (flowInput.aiTodoText.match(promptEngineeringRegex)?.[1] || '') : undefined;
 
-      const {output} = await prompt(flowInput);
+      const {output} = await prompt({
+        ...flowInput,
+        isPromptEngineeringTask,
+        promptEngineeringTopic,
+      });
+
+      // Ensure the summary is correctly formatted for prompt engineering tasks
+      if (isPromptEngineeringTask) {
+        return {
+          resultMarkdown: output!.resultMarkdown,
+          summary: `Generated a refined prompt for: ${promptEngineeringTopic}`,
+        }
+      }
+
       return output!;
     }
   );
