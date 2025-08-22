@@ -126,7 +126,7 @@ export function ChecklistHeader({
               </h1>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
           {checklists.length > 0 && (
             <Select value={activeChecklistId || ''} onValueChange={onSwitch}>
               <SelectTrigger className="w-[180px] sm:w-[250px]">
@@ -151,9 +151,9 @@ export function ChecklistHeader({
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <div className="relative flex items-center">
+                  <div className="relative flex items-center px-2">
                     <ListOrdered className="h-5 w-5 text-muted-foreground" />
-                    <Badge variant="secondary" className="absolute -top-2 -right-3 px-1.5">{executionQueueSize}</Badge>
+                    <Badge variant="secondary" className="absolute -top-2 -right-3 h-5 w-5 justify-center p-0">{executionQueueSize}</Badge>
                   </div>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
