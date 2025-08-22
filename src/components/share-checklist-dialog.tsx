@@ -118,7 +118,7 @@ export function ShareChecklistDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md w-[90vw] rounded-lg">
         <DialogHeader>
           <DialogTitle>Share "{checklist.name}"</DialogTitle>
           <DialogDescription>

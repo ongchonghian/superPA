@@ -1,6 +1,5 @@
 
 
-
 'use client';
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
@@ -226,7 +225,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
 
     return (
         <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent className="sm:max-w-lg w-[90vw] flex flex-col p-4 sm:p-6">
+            <SheetContent className="w-full sm:max-w-lg sm:w-[90vw] flex flex-col p-4 sm:p-6">
                 <SheetHeader className="text-left">
                     <SheetTitle>Remarks for: {task.description}</SheetTitle>
                     <SheetDescription>View and add comments to this task. Type @ to mention a user.</SheetDescription>

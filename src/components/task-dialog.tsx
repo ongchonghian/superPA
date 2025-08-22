@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React from 'react';
@@ -88,7 +89,7 @@ export function TaskDialog({ task, open, onOpenChange, onSave, isCollaborator }:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[425px] w-[90vw] rounded-lg">
         <DialogHeader>
           <DialogTitle className="font-headline">{isEditing ? 'Edit Task' : 'Add New Task'}</DialogTitle>
           <DialogDescription>

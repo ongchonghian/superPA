@@ -47,6 +47,7 @@ import { format, parseISO, formatDistanceToNow, isSameDay, addMinutes, isAfter }
 import {PRIORITIES, STATUSES} from '@/lib/data';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Card, CardContent } from './ui/card';
 
 type SortKey = keyof Task | '';
 
@@ -396,14 +397,14 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                 className="max-w-xs"
             />
             <Select value={filters.priority} onValueChange={v => setFilters(f => ({ ...f, priority: v }))}>
-                <SelectTrigger className="w-[150px]"><SelectValue/></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[150px]"><SelectValue/></SelectTrigger>
                 <SelectContent>
                     <SelectItem value="all">All Priorities</SelectItem>
                     {PRIORITIES.map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}
                 </SelectContent>
             </Select>
             <Select value={filters.status} onValueChange={v => setFilters(f => ({ ...f, status: v }))}>
-                <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
+                <SelectTrigger className="w-full sm:w-[150px]"><SelectValue /></SelectTrigger>
                 <SelectContent>
                     <SelectItem value="all">All Statuses</SelectItem>
                     {STATUSES.map(s => <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>)}
@@ -411,7 +412,7 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
             </Select>
         </div>
       </div>
-      <div className="rounded-lg border">
+      <div className="hidden md:block rounded-lg border">
         <Table>
           <TableHeader>
             <TableRow>
@@ -505,61 +506,174 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                                     isOwner={isOwner}
                                     settings={settings}
                                   />
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
 
-                    </TableCell>
-                    <TableCell className="align-top">{task.assignee}</TableCell>
-                    <TableCell className="align-top">
-                      <Badge variant="outline" className={priorityColors[task.priority]}>{task.priority}</Badge>
-                    </TableCell>
-                    <TableCell className="align-top">{format(parseISO(task.dueDate), 'MMM dd, yyyy')}</TableCell>
-                    <TableCell className="align-top">
-                      <Badge variant="outline" className={statusColors[task.status]}>
-                        {task.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right align-top no-print">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Open menu</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onSelect={() => openTaskDialog(task)}>
-                              Edit Task
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => openRemarksSheet(task)}>
-                              <MessageSquare className="mr-2 h-4 w-4" />
-                              View/Add Remarks
-                          </DropdownMenuItem>
-                          {isOwner && (
-                            <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => handleDeleteTask(task.id)}>
-                                <Trash2 className="mr-2 h-4 w-4" />
-                                Delete Task
-                            </DropdownMenuItem>
-                           )}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                        </TableCell>
+                        <TableCell className="align-top">{task.assignee}</TableCell>
+                        <TableCell className="align-top">
+                          <Badge variant="outline" className={priorityColors[task.priority]}>{task.priority}</Badge>
+                        </TableCell>
+                        <TableCell className="align-top">{format(parseISO(task.dueDate), 'MMM dd, yyyy')}</TableCell>
+                        <TableCell className="align-top">
+                          <Badge variant="outline" className={statusColors[task.status]}>
+                            {task.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right align-top no-print">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Open menu</span>
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onSelect={() => openTaskDialog(task)}>
+                                  Edit Task
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => openRemarksSheet(task)}>
+                                  <MessageSquare className="mr-2 h-4 w-4" />
+                                  View/Add Remarks
+                              </DropdownMenuItem>
+                              {isOwner && (
+                                <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => handleDeleteTask(task.id)}>
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete Task
+                                </DropdownMenuItem>
+                               )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center">
+                      No tasks found.
                     </TableCell>
                   </TableRow>
-                );
-              })
+                )}
+              </TableBody>
+            </Table>
+        </div>
+        <div className="md:hidden space-y-4">
+            {filteredAndSortedTasks.length > 0 ? (
+                filteredAndSortedTasks.map(task => {
+                    const isTaskBusy = task.remarks.some(r => runningRemarkIds.includes(r.id));
+                    
+                    const flattenedRemarks: {remark: Remark, level: number}[] = [];
+                    const remarksMap = new Map<string, Remark[]>();
+                    task.remarks.forEach(remark => {
+                        const parentId = remark.parentId || 'root';
+                        if (!remarksMap.has(parentId)) {
+                            remarksMap.set(parentId, []);
+                        }
+                        remarksMap.get(parentId)!.push(remark);
+                    });
+                    remarksMap.forEach(children => {
+                        children.sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                    });
+                
+                    const addChildrenToFlattenedList = (parentId: string, level: number) => {
+                        const children = remarksMap.get(parentId) || [];
+                        children.forEach(child => {
+                            flattenedRemarks.push({ remark: child, level: level });
+                            addChildrenToFlattenedList(child.id, level + 1);
+                        });
+                    };
+                    addChildrenToFlattenedList('root', 0);
+
+                    return (
+                        <Card key={task.id} data-state={task.status === 'complete' ? 'completed' : 'pending'}>
+                            <CardContent className="p-4">
+                                <div className="flex items-start gap-3">
+                                    <Checkbox
+                                        id={`complete-mobile-${task.id}`}
+                                        aria-label={`Mark task ${task.description} as complete`}
+                                        checked={task.status === 'complete'}
+                                        onCheckedChange={(isChecked) => handleTaskCompletionChange(task, !!isChecked)}
+                                        className="mt-1"
+                                    />
+                                    <div className="flex-1">
+                                        <p className={`font-medium ${task.status === 'complete' ? 'text-muted-foreground line-through' : ''}`}>
+                                            {task.description}
+                                        </p>
+                                        <div className="mt-2 text-xs text-muted-foreground space-y-1">
+                                            <p><strong>Assignee:</strong> {task.assignee}</p>
+                                            <p><strong>Due:</strong> {format(parseISO(task.dueDate), 'MMM dd, yyyy')}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-2">
+                                        <Badge variant="outline" className={priorityColors[task.priority]}>{task.priority}</Badge>
+                                        <Badge variant="outline" className={statusColors[task.status]}>{task.status}</Badge>
+                                    </div>
+                                    <div className="no-print -mr-2">
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                                <span className="sr-only">Open menu</span>
+                                                <MoreHorizontal className="h-4 w-4" />
+                                            </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                            <DropdownMenuItem onSelect={() => openTaskDialog(task)}>
+                                                Edit Task
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onSelect={() => openRemarksSheet(task)}>
+                                                <MessageSquare className="mr-2 h-4 w-4" />
+                                                View/Add Remarks
+                                            </DropdownMenuItem>
+                                            {isOwner && (
+                                                <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => handleDeleteTask(task.id)}>
+                                                    <Trash2 className="mr-2 h-4 w-4" />
+                                                    Delete Task
+                                                </DropdownMenuItem>
+                                            )}
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
+                                </div>
+                                <div className="mt-4 space-y-3">
+                                    {flattenedRemarks.map(({ remark, level }) => (
+                                    <div key={remark.id} className="flex items-start gap-2.5" style={{ paddingLeft: `${level * 1.5}rem` }}>
+                                        <Avatar className="h-6 w-6 border text-xs">
+                                            <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
+                                        </Avatar>
+                                        <div className="grid gap-0.5 flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <p className="text-xs font-semibold text-foreground">{remark.userId}</p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    {formatDistanceToNow(new Date(remark.timestamp), { addSuffix: true })}
+                                                </p>
+                                            </div>
+                                            <RemarkDisplay 
+                                                remark={remark} 
+                                                task={task} 
+                                                onRunRefinedPrompt={onRunRefinedPrompt}
+                                                onExecuteAiTodo={onExecuteAiTodo}
+                                                isTaskBusy={isTaskBusy}
+                                                isOwner={isOwner}
+                                                settings={settings}
+                                            />
+                                        </div>
+                                    </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )
+                })
             ) : (
-              <TableRow>
-                <TableCell colSpan={7} className="h-24 text-center">
-                  No tasks found.
-                </TableCell>
-              </TableRow>
+                 <div className="text-center text-muted-foreground py-16">
+                    No tasks found.
+                </div>
             )}
-          </TableBody>
-        </Table>
-      </div>
+        </div>
       <div className="fixed bottom-8 right-8 no-print">
         <Button
           onClick={() => openTaskDialog({})}

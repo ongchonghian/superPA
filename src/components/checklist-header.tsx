@@ -103,7 +103,7 @@ export function ChecklistHeader({
 
   return (
     <header className="sticky top-0 z-10 flex flex-col items-center justify-between gap-4 border-b border-border bg-background/80 p-4 backdrop-blur-sm no-print">
-      <div className="flex w-full flex-wrap items-center justify-between gap-4">
+      <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
               <svg
@@ -129,10 +129,10 @@ export function ChecklistHeader({
               </h1>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-2">
           {checklists.length > 0 && (
             <Select value={activeChecklistId || ''} onValueChange={onSwitch}>
-              <SelectTrigger className="w-[180px] sm:w-[250px]">
+              <SelectTrigger className="w-full sm:w-[180px] md:w-[250px]">
                 <SelectValue placeholder="Select a checklist" />
               </SelectTrigger>
               <SelectContent>
@@ -144,13 +144,17 @@ export function ChecklistHeader({
               </SelectContent>
             </Select>
           )}
-          <Button onClick={onAdd} size="sm">
-            <Plus className="mr-2 h-4 w-4" /> New
-          </Button>
-           <Button onClick={onGetAiSuggestions} size="sm" variant="outline" disabled={!hasActiveChecklist || !isOwner}>
-            <WandSparkles className="mr-2 h-4 w-4" /> Suggest AI To-Dos
-          </Button>
-          {executionQueueSize > 0 && (
+          <div className="flex w-full sm:w-auto items-center gap-2">
+            <Button onClick={onAdd} size="sm" className="flex-1">
+              <Plus className="mr-2 h-4 w-4" /> New
+            </Button>
+            <Button onClick={onGetAiSuggestions} size="sm" variant="outline" disabled={!hasActiveChecklist || !isOwner} className="flex-1">
+              <WandSparkles className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Suggest AI To-Dos</span>
+              <span className="sm:hidden">Suggest</span>
+            </Button>
+          </div>
+           {executionQueueSize > 0 && (
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
