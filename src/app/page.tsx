@@ -399,12 +399,8 @@ export default function Home() {
 
     const handleNotificationsOpen = useCallback(() => {
       if (!user || !activeChecklistId) return;
-      
       const now = new Date().toISOString();
       localStorage.setItem(`super-pa-last-read-${user.uid}-${activeChecklistId}`, now);
-      
-      setNotifications([]);
-
   }, [user, activeChecklistId]);
   
   // Effect to subscribe to documents associated with the active checklist
@@ -1087,6 +1083,8 @@ export default function Home() {
 
     const executionToast = toast({ title: "AI Execution Started", description: "The AI is now working on your to-do." });
     setRunningRemarkIds(prev => [...prev, remarkToExecute.id]);
+    
+    const statusUpdateRegex = /\[ai-todo\|(pending|running|completed|failed)\]/;
 
     const tasksWithRunning = activeChecklist.tasks.map(t => {
       if (t.id !== task.id) return t;
@@ -1094,7 +1092,7 @@ export default function Home() {
         ...t,
         remarks: t.remarks.map(r => 
           r.id === remarkToExecute.id 
-              ? { ...r, text: r.text.replace(/\[ai-todo\|(pending|completed|failed|running)\]/, '[ai-todo|running]'), timestamp: new Date().toISOString() } 
+              ? { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|running]'), timestamp: new Date().toISOString() } 
               : r
         )
       };
@@ -1109,7 +1107,7 @@ export default function Home() {
             throw new Error("Could not find task to prepare for AI.");
         }
 
-        const aiTodoText = remarkToExecute.text.replace(/^\[ai-todo\|(pending|running|completed|failed)\]\s*/, '').trim();
+        const aiTodoText = remarkToExecute.text.replace(statusUpdateRegex, '').trim();
         const contextDocuments = await getContextDocumentsForAi();
         
         const result = await executeAiTodo({
@@ -1139,7 +1137,7 @@ export default function Home() {
             
             const updatedRemarks = t.remarks.map(r => 
                 r.id === remarkToExecute.id 
-                ? { ...r, text: r.text.replace(/\[ai-todo\|(pending|completed|failed|running)\]/, '[ai-todo|completed]') } 
+                ? { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|completed]') } 
                 : r
             );
             
@@ -1167,7 +1165,7 @@ export default function Home() {
 
             const updatedRemarks = t.remarks.map(r => {
                 if (r.id === remarkToExecute.id) {
-                    return { ...r, text: r.text.replace(/\[ai-todo\|(pending|running|completed)\]/, '[ai-todo|failed]') };
+                    return { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|failed]') };
                 }
                 return r;
             });
@@ -1541,16 +1539,19 @@ export default function Home() {
   };
 
   const handleNotificationClick = (notification: Notification) => {
-    const remarkElement = document.getElementById(`remark-${notification.remarkId}`);
-    if (remarkElement) {
-      remarkElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      // Add a temporary highlight effect
-      remarkElement.classList.add('animate-pulse', 'bg-accent/20', 'rounded-lg');
-      setTimeout(() => {
-        remarkElement.classList.remove('animate-pulse', 'bg-accent/20', 'rounded-lg');
-      }, 3000);
-    }
     setNotifications(prev => prev.filter(n => n.id !== notification.id));
+    // Wait for the next render cycle for the notification to be removed from the DOM
+    // before attempting to scroll to the element.
+    setTimeout(() => {
+        const remarkElement = document.getElementById(`remark-${notification.remarkId}`);
+        if (remarkElement) {
+            remarkElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            remarkElement.classList.add('animate-pulse', 'bg-accent/20', 'rounded-lg');
+            setTimeout(() => {
+                remarkElement.classList.remove('animate-pulse', 'bg-accent/20', 'rounded-lg');
+            }, 3000);
+        }
+    }, 100);
   };
 
 
