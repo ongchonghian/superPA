@@ -156,8 +156,9 @@ export function ChecklistHeader({
                     <Badge variant="secondary" className="absolute -top-2 -right-3 px-1.5">{executionQueueSize}</Badge>
                   </div>
                 </TooltipTrigger>
-                <TooltipContent>
-                  <p>{executionQueueSize} AI task(s) in queue</p>
+                <TooltipContent className="max-w-xs">
+                  <p className="font-medium">{executionQueueSize} AI task(s) in queue</p>
+                  <p className="text-xs text-muted-foreground mt-1">Queued tasks will not be processed if you close the browser.</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
