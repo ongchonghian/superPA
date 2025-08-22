@@ -240,7 +240,7 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTa
       window.dispatchEvent(new CustomEvent('view-report', { detail: path }));
     };
     
-    const promptGenSummaryRegex = /Generated a refined prompt for:/;
+    const promptGenSummaryRegex = /Generated a refined prompt for: (.*)/s;
     const promptGenMatch = summary.match(promptGenSummaryRegex);
 
     return (
@@ -560,9 +560,14 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
           </TableBody>
         </Table>
       </div>
-      <div className="flex justify-end no-print">
-        <Button onClick={() => openTaskDialog({})}>
-            <Plus className="mr-2 h-4 w-4" /> Add Task
+      <div className="fixed bottom-8 right-8 no-print">
+        <Button
+          onClick={() => openTaskDialog({})}
+          className="rounded-full h-16 w-16 shadow-lg"
+          size="icon"
+        >
+          <Plus className="h-8 w-8" />
+          <span className="sr-only">Add Task</span>
         </Button>
       </div>
     </div>
