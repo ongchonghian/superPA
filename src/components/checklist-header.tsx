@@ -36,6 +36,7 @@ import {
   Bell,
   FileText,
   ListOrdered,
+  FileArchive,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import type { UserProfile, Notification } from '@/lib/types';
@@ -59,6 +60,7 @@ interface ChecklistHeaderProps {
   onExportMarkdown: () => void;
   onExportPdf: () => void;
   onExportConfluence: () => void;
+  onExportZip: () => void;
   onGetAiSuggestions: () => void;
   onShare: () => void;
   onSettings: () => void;
@@ -84,6 +86,7 @@ export function ChecklistHeader({
   onExportMarkdown,
   onExportPdf,
   onExportConfluence,
+  onExportZip,
   onGetAiSuggestions,
   onShare,
   onSettings,
@@ -199,6 +202,10 @@ export function ChecklistHeader({
                   <DropdownMenuItem onSelect={onExportMarkdown}>as Markdown</DropdownMenuItem>
                   <DropdownMenuItem onSelect={onExportPdf}>as PDF</DropdownMenuItem>
                   <DropdownMenuItem onSelect={onExportConfluence}>for Confluence</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onExportZip}>
+                    <FileArchive className="mr-2 h-4 w-4" />
+                    Download All as Zip
+                  </DropdownMenuItem>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
               {activeChecklistId && isOwner && (

@@ -58,6 +58,7 @@ import { ChecklistConfluenceView } from '@/components/checklist-confluence-view'
 import { LoginScreen } from '@/components/login-screen';
 import { ShareChecklistDialog } from '@/components/share-checklist-dialog';
 import { SettingsDialog } from '@/components/settings-dialog';
+import JSZip from 'jszip';
 
 
 export default function Home() {
@@ -846,36 +847,29 @@ export default function Home() {
     };
     reader.readAsText(file);
   };
-
-  const handleExportMarkdown = () => {
-    if (!activeChecklist) return;
-
-    const checklistTitle = `# ${activeChecklist.name}\n\n`;
+  
+  const generateMarkdownContent = useCallback((checklist: Checklist): string => {
+    const checklistTitle = `# ${checklist.name}\n\n`;
 
     const formatTaskToMarkdown = (task: Task) => {
       const status = task.status === 'complete' ? 'x' : ' ';
-      
       const taskDetails = `(Priority: ${task.priority}, Due: ${task.dueDate})`;
       const assigneePart = ` - *Assignee: [${task.assignee || 'Unassigned'}]*`;
-
       const taskLine = `- [${status}] **${task.description}** ${taskDetails}${assigneePart}`;
       
       const remarksLines = task.remarks.map(r => {
         const remarkDate = new Date(r.timestamp);
         const dateString = remarkDate.toISOString().split('T')[0].replace(/-/g, '');
-        // The remark text from the database already includes the stateful AI to-do format, e.g., "[ai-todo|pending] ..."
-        // This ensures lossless export.
         return `  - > #${dateString} ${r.text} (by ${r.userId})`;
       }).join('\n');
       
       return `${taskLine}${remarksLines ? `\n${remarksLines}` : ''}`;
     };
 
-    const incompleteTasks = activeChecklist.tasks.filter(t => t.status !== 'complete');
-    const completedTasks = activeChecklist.tasks.filter(t => t.status === 'complete');
+    const incompleteTasks = checklist.tasks.filter(t => t.status !== 'complete');
+    const completedTasks = checklist.tasks.filter(t => t.status === 'complete');
     
     let markdownContent = '';
-
     if (incompleteTasks.length > 0) {
       markdownContent += `## Incomplete Tasks\n\n`;
       markdownContent += incompleteTasks.map(formatTaskToMarkdown).join('\n\n');
@@ -888,12 +882,17 @@ export default function Home() {
       markdownContent += '\n\n';
     }
 
-    // Fallback if the checklist is empty
     if (markdownContent.trim() === '') {
         markdownContent = 'This checklist has no tasks.';
     }
 
-    const fullContent = checklistTitle + markdownContent.trim() + '\n';
+    return checklistTitle + markdownContent.trim() + '\n';
+  }, []);
+
+  const handleExportMarkdown = () => {
+    if (!activeChecklist) return;
+
+    const fullContent = generateMarkdownContent(activeChecklist);
     const blob = new Blob([fullContent], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -932,6 +931,69 @@ export default function Home() {
         });
     });
   };
+
+  const handleExportZip = useCallback(async () => {
+    if (!activeChecklist || !storage) {
+        toast({ title: 'Error', description: 'No active checklist to export.', variant: 'destructive' });
+        return;
+    }
+    const exportToast = toast({ title: 'Preparing download...', description: 'Gathering reports and creating zip file.' });
+    
+    try {
+        const zip = new JSZip();
+        
+        // 1. Add checklist markdown to root
+        const markdownContent = generateMarkdownContent(activeChecklist);
+        zip.file(`${activeChecklist.name.replace(/\s+/g, '_')}.md`, markdownContent);
+
+        // 2. Find all report links and fetch them
+        const reportPromises: Promise<void>[] = [];
+        const storageLinkRegex = /\[View results\]\(storage:\/\/([^)]+)\)/;
+
+        activeChecklist.tasks.forEach((task, taskIndex) => {
+            const safeTaskName = task.description.replace(/[^\w\s-]/g, '').trim().substring(0, 50) || `task-${taskIndex + 1}`;
+            let reportCounter = 1;
+
+            task.remarks.forEach(remark => {
+                const match = remark.text.match(storageLinkRegex);
+                if (match) {
+                    const storagePath = match[1];
+                    const reportPromise = getBytes(storageRef(storage, storagePath))
+                        .then(reportBytes => {
+                            const reportContent = new TextDecoder('utf-8').decode(reportBytes);
+                            zip.file(`${safeTaskName}/report-${reportCounter}.md`, reportContent);
+                            reportCounter++;
+                        })
+                        .catch(error => {
+                            console.error(`Failed to fetch report: ${storagePath}`, error);
+                            // Add a failure note in the zip instead of failing the whole export
+                            zip.file(`${safeTaskName}/FAILED_TO_FETCH_REPORT_${reportCounter}.txt`, `Could not fetch report from ${storagePath}.\nError: ${error.message}`);
+                        });
+                    reportPromises.push(reportPromise);
+                }
+            });
+        });
+
+        await Promise.all(reportPromises);
+        
+        // 3. Generate and download zip
+        const zipBlob = await zip.generateAsync({ type: 'blob' });
+        const url = URL.createObjectURL(zipBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${activeChecklist.name.replace(/\s+/g, '_')}_export.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        exportToast.update({ id: exportToast.id, title: 'Export Complete', description: 'Your checklist and reports have been downloaded.' });
+
+    } catch (error) {
+        console.error('Failed to create zip file', error);
+        exportToast.update({ id: exportToast.id, title: 'Export Failed', description: 'Could not create the zip file.', variant: 'destructive' });
+    }
+  }, [activeChecklist, storage, toast, generateMarkdownContent]);
   
   const fileToDataUri = useCallback((file: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -1611,6 +1673,7 @@ export default function Home() {
         onExportMarkdown={handleExportMarkdown}
         onExportPdf={handleExportPdf}
         onExportConfluence={handleExportConfluence}
+        onExportZip={handleExportZip}
         onGetAiSuggestions={fetchAiSuggestions}
         onShare={() => setIsShareDialogOpen(true)}
         onSettings={() => setIsSettingsDialogOpen(true)}
