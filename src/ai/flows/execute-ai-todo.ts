@@ -37,6 +37,13 @@ export type ExecuteAiTodoOutput = z.infer<typeof ExecuteAiTodoOutputSchema>;
 
 export async function executeAiTodo(input: ExecuteAiTodoInput): Promise<ExecuteAiTodoOutput> {
   const ai = configureAi(input.apiKey, input.model);
+  
+  // This regex is used to determine if the task is a prompt engineering task.
+  // It is used here to pass a boolean to the prompt, and also used inside the prompt.
+  const promptEngineeringRegex = /Refine the prompt for: (.*)/s;
+  const isPromptEngineeringTask = promptEngineeringRegex.test(input.aiTodoText);
+  const promptEngineeringTopic = input.aiTodoText.match(promptEngineeringRegex)?.[1] || '';
+
 
   const executeAiTodoFlow = ai.defineFlow(
     {
@@ -49,9 +56,7 @@ export async function executeAiTodo(input: ExecuteAiTodoInput): Promise<ExecuteA
         name: 'executeAiTodoPrompt',
         input: {schema: ExecuteAiTodoInputSchema},
         output: {schema: ExecuteAiTodoOutputSchema},
-        prompt: `You are an expert-level AI assistant, tasked with executing a specific to-do item for a project.
-
-Your goal is to provide a comprehensive, detailed, and well-structured response in Markdown format that directly fulfills the user's request. You must also provide a brief summary of your output.
+        prompt: `You are an expert-level AI assistant. Your goal is to provide a comprehensive, detailed, and well-structured response in Markdown format that directly fulfills the user's request, and then provide a brief summary of your output.
 
 {{#if contextDocuments}}
 --- START OF CONTEXT DOCUMENTS ---
@@ -73,10 +78,31 @@ Discussion History (includes user remarks and other AI to-dos):
 --- END OF TASK CONTEXT ---
 
 --- YOUR ASSIGNMENT ---
+{{#if ${isPromptEngineeringTask}}}
+You are an expert in "prompt engineering." Your task is to act as a thought-partner to help a user refine a concept into a better AI prompt.
+
+The user wants to generate a good prompt for the following topic:
+"{{{promptEngineeringTopic}}}"
+
+Based on the provided context (task description, discussion history, documents), do the following:
+1.  **Analyze the User's Goal:** What is the user trying to achieve? What is the underlying objective of their topic?
+2.  **Identify Key Information:** What crucial details from the context documents or discussion are relevant to this topic?
+3.  **Structure a Refined Prompt:** Create a new, detailed prompt in a Markdown code block. This prompt should be much more descriptive and specific than the user's initial topic. It should include:
+    *   A clear **Role** for the AI (e.g., "You are an expert marketer...").
+    *   The primary **Goal** or **Task**.
+    *   Specific **Constraints** or **Requirements** (e.g., "The response must be in a JSON format," "Avoid technical jargon.").
+    *   Relevant **Context** that the AI should use, referencing the provided documents if applicable.
+4.  **Provide a Rationale:** Explain *why* you structured the prompt the way you did. Justify your choices for the role, goal, and constraints.
+
+Your final output MUST be in Markdown.
+{{else}}
 Execute the following AI To-Do item NOW:
 "{{{aiTodoText}}}"
 
-Based on all the provided context, generate a detailed response in Markdown. Your response should be thorough, actionable, and directly address the to-do item. After generating the detailed response, provide a simple, one-sentence summary of what you did.
+Based on all the provided context, generate a detailed response in Markdown. Your response should be thorough, actionable, and directly address the to-do item.
+{{/if}}
+
+After generating the detailed response, provide a simple, one-sentence summary of what you did.
 `,
       });
 
