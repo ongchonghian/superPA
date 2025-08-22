@@ -29,6 +29,7 @@ import {
   where,
   or,
   setDoc,
+  serverTimestamp,
 } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, signOut, type User } from 'firebase/auth';
 import { NewChecklistDialog } from '@/components/new-checklist-dialog';
@@ -345,7 +346,11 @@ export default function Home() {
       if (doc.exists()) {
         const newChecklist = { id: doc.id, ...doc.data() } as Checklist;
         setActiveChecklist(newChecklist);
-        previousChecklist.current = newChecklist;
+        
+        // This assignment will be used in the notification effect
+        if (!previousChecklist.current) {
+          previousChecklist.current = newChecklist;
+        }
       } else {
         // This can happen if the active checklist is deleted
         setActiveChecklist(null);
@@ -363,31 +368,42 @@ export default function Home() {
 
     // Effect to detect new reports and create notifications
     useEffect(() => {
-      if (!activeChecklist || !previousChecklist.current) {
+      if (!activeChecklist || !previousChecklist.current || activeChecklist.id !== previousChecklist.current.id) {
+        // Reset previous checklist if active one changes
+        if (activeChecklist) previousChecklist.current = activeChecklist;
         return;
       }
-  
-      const oldRemarks = new Set(previousChecklist.current.tasks.flatMap(t => t.remarks.map(r => r.id)));
-  
+      
+      const oldRemarksByTask = new Map<string, Set<string>>();
+      previousChecklist.current.tasks.forEach(task => {
+        oldRemarksByTask.set(task.id, new Set(task.remarks.map(r => r.id)));
+      });
+
+      const newNotifications: Notification[] = [];
+
       activeChecklist.tasks.forEach(task => {
+        const oldRemarkIds = oldRemarksByTask.get(task.id) || new Set();
         task.remarks.forEach(remark => {
-          if (!oldRemarks.has(remark.id) && remark.userId === 'ai_executor') {
-            const newNotification: Notification = {
+          if (!oldRemarkIds.has(remark.id) && remark.userId === 'ai_executor') {
+            newNotifications.push({
               id: `notif_${remark.id}`,
               taskId: task.id,
               remarkId: remark.id,
               taskDescription: task.description,
               timestamp: new Date().toISOString(),
               read: false,
-            };
-            setNotifications(prev => [...prev, newNotification]);
-            toast({
-              title: "New Report Ready",
-              description: `A new AI report has been added to the task: "${task.description.substring(0, 30)}..."`,
             });
           }
         });
       });
+  
+      if (newNotifications.length > 0) {
+        setNotifications(prev => [...prev, ...newNotifications]);
+        toast({
+          title: newNotifications.length > 1 ? "New Reports Ready" : "New Report Ready",
+          description: `An AI report has been added. Check your notifications.`,
+        });
+      }
   
       previousChecklist.current = activeChecklist;
     }, [activeChecklist, toast]);
@@ -1079,7 +1095,7 @@ export default function Home() {
         ...t,
         remarks: t.remarks.map(r => 
           r.id === remarkToExecute.id 
-              ? { ...r, text: r.text.replace(/\[ai-todo\|(pending|completed|failed)\]/, '[ai-todo|running]'), timestamp: new Date().toISOString() } 
+              ? { ...r, text: r.text.replace(/\[ai-todo\|(pending|completed|failed|running)\]/, '[ai-todo|running]'), timestamp: new Date().toISOString() } 
               : r
         )
       };

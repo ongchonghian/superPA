@@ -141,12 +141,13 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTa
     
     const isRunning = status === 'running';
     const isCompleted = status === 'completed';
+    const isFailed = status === 'failed';
     
     const completedTime = parseISO(timestamp);
     const retryTime = addMinutes(completedTime, settings.rerunTimeout || 5);
     const canRetryCompleted = isAfter(new Date(), retryTime);
 
-    const showRetryButton = isRunning || (isCompleted && canRetryCompleted);
+    const showRetryButton = isRunning || isFailed || (isCompleted && canRetryCompleted);
     
     const statusPill = (
         <span className={`capitalize px-1.5 py-0.5 text-xs rounded-full font-medium ${
