@@ -11,7 +11,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, WandSparkles, Lightbulb, MessageSquare, BookOpenCheck, ShieldAlert } from 'lucide-react';
+import { Loader2, WandSparkles, Lightbulb, MessageSquare, BookOpenCheck, ShieldAlert, PlusCircle } from 'lucide-react';
 import type { Task } from '@/lib/types';
 import type { ChecklistSuggestion, InformationRequest, CapabilityWarning } from '@/ai/flows/suggest-checklist-next-steps';
 import { ScrollArea } from './ui/scroll-area';
@@ -27,6 +27,7 @@ interface ChecklistAiSuggestionDialogProps {
   onAddSuggestion: (suggestion: ChecklistSuggestion) => void;
   onRegenerate: () => void;
   onProvideInfo: (taskId: string) => void;
+  onAddWarning: (warning: CapabilityWarning) => void;
 }
 
 export function ChecklistAiSuggestionDialog({ 
@@ -39,7 +40,8 @@ export function ChecklistAiSuggestionDialog({
   tasks,
   onAddSuggestion,
   onRegenerate,
-  onProvideInfo
+  onProvideInfo,
+  onAddWarning
 }: ChecklistAiSuggestionDialogProps) {
   
   const getTaskDescription = (taskId: string) => {
@@ -172,9 +174,15 @@ export function ChecklistAiSuggestionDialog({
                                       </h4>
                                       <ul className="space-y-3 pt-2">
                                       {taskWarnings.map((warning, index) => (
-                                          <li key={index} className="flex items-start gap-3 animate-in fade-in duration-300">
-                                            <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-500"/>
-                                            <span className="text-sm text-amber-900 dark:text-amber-200 break-words">{warning.warning}</span>
+                                          <li key={index} className="flex items-center justify-between gap-3 animate-in fade-in duration-300">
+                                            <div className="flex items-start gap-3 flex-1">
+                                                <ShieldAlert className="h-4 w-4 mt-0.5 shrink-0 text-amber-600 dark:text-amber-500"/>
+                                                <span className="text-sm text-amber-900 dark:text-amber-200 break-words">{warning.warning}</span>
+                                            </div>
+                                            <Button size="sm" variant="outline" onClick={() => onAddWarning(warning)}>
+                                                <PlusCircle className="mr-2 h-4 w-4"/>
+                                                Add as Remark
+                                            </Button>
                                           </li>
                                       ))}
                                       </ul>

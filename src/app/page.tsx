@@ -1132,6 +1132,43 @@ export default function Home() {
     });
   }, [activeChecklist, handleUpdateChecklist, toast]);
 
+  const handleAddWarningAsRemark = useCallback((warningToAdd: CapabilityWarning) => {
+    if (!activeChecklist) return;
+    const targetTask = activeChecklist.tasks.find(t => t.id === warningToAdd.taskId);
+    if (!targetTask) return;
+    
+    const newRemark: Remark = {
+        id: `rem_${Date.now()}_${Math.random()}`,
+        text: warningToAdd.warning,
+        userId: 'ai_assistant',
+        timestamp: new Date().toISOString(),
+    };
+    
+    const updatedTask = {
+        ...targetTask,
+        remarks: [...targetTask.remarks, newRemark],
+    };
+
+    const updatedTasks = activeChecklist.tasks.map(t =>
+      t.id === updatedTask.id ? updatedTask : t
+    );
+    
+    handleUpdateChecklist({ id: activeChecklist.id, tasks: updatedTasks });
+
+    setAiAnalysisResult(currentResult => {
+      if (!currentResult) return null;
+      return {
+          ...currentResult,
+          capabilityWarnings: (currentResult.capabilityWarnings || []).filter(w => !(w.warning === warningToAdd.warning && w.taskId === warningToAdd.taskId))
+      };
+    });
+    
+    toast({
+        title: "Warning Saved",
+        description: "The capability warning has been saved as a remark.",
+    });
+  }, [activeChecklist, handleUpdateChecklist, toast]);
+
   const handleProvideInfo = useCallback((taskId: string) => {
     if (!activeChecklist) return;
     const task = activeChecklist.tasks.find(t => t.id === taskId);
@@ -1771,6 +1808,7 @@ export default function Home() {
         onAddSuggestion={handleAddSuggestionAsRemark}
         onRegenerate={fetchAiSuggestions}
         onProvideInfo={handleProvideInfo}
+        onAddWarning={handleAddWarningAsRemark}
       />
       <TaskDialog
         task={dialogTask}
