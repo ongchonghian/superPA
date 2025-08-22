@@ -102,6 +102,8 @@ export default function Home() {
     rerunTimeout: 5,
   });
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [executionQueue, setExecutionQueue] = useState<{taskId: string, remarkId: string}[]>([]);
+
 
   // Load settings from localStorage on initial render
   useEffect(() => {
@@ -1078,112 +1080,128 @@ export default function Home() {
     }
   }, [activeChecklist]);
 
-  const handleExecuteAiTodo = useCallback(async (task: Task, remarkToExecute: Remark) => {
-    if (!activeChecklist || !db || !storage) return;
+  const enqueueAiTodo = useCallback(async (task: Task, remark: Remark) => {
+    if (!activeChecklist || !db) return;
 
-    const executionToast = toast({ title: "AI Execution Started", description: "The AI is now working on your to-do." });
-    setRunningRemarkIds(prev => [...prev, remarkToExecute.id]);
+    // Update the remark status to 'queued' in Firestore
+    const statusUpdateRegex = /\[ai-todo\|(pending|running|completed|failed|queued)\]/;
+    const updatedRemarks = task.remarks.map(r => 
+      r.id === remark.id 
+          ? { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|queued]'), timestamp: new Date().toISOString() } 
+          : r
+    );
+    const updatedTask = { ...task, remarks: updatedRemarks };
+    const updatedTasks = activeChecklist.tasks.map(t => (t.id === task.id ? updatedTask : t));
+
+    await handleUpdateChecklist({ id: activeChecklist.id, tasks: updatedTasks });
+
+    // Add to the client-side queue
+    setExecutionQueue(prev => [...prev, { taskId: task.id, remarkId: remark.id }]);
+    toast({ title: "AI To-Do Queued", description: "Your request has been added to the queue." });
+
+  }, [activeChecklist, db, handleUpdateChecklist, toast]);
+
+  // Effect to process the execution queue
+  useEffect(() => {
+    const processQueue = async () => {
+        if (executionQueue.length > 0 && runningRemarkIds.length === 0 && activeChecklist && db && storage) {
+            const { taskId, remarkId } = executionQueue[0];
+            
+            // Find the task and remark from the current checklist state
+            const task = activeChecklist.tasks.find(t => t.id === taskId);
+            const remark = task?.remarks.find(r => r.id === remarkId);
+            
+            if (!task || !remark) {
+                console.warn(`Task or remark not found for queue item, skipping. TaskID: ${taskId}, RemarkID: ${remarkId}`);
+                setExecutionQueue(prev => prev.slice(1)); // Dequeue the invalid item
+                return;
+            }
+
+            setExecutionQueue(prev => prev.slice(1)); // Dequeue
+            
+            // Now, execute the AI to-do
+            const executionToast = toast({ title: "AI Execution Started", description: "The AI is now working on your to-do." });
+            setRunningRemarkIds(prev => [...prev, remark.id]);
     
-    const statusUpdateRegex = /\[ai-todo\|(pending|running|completed|failed)\]/;
+            const statusUpdateRegex = /\[ai-todo\|(pending|running|completed|failed|queued)\]/;
 
-    const tasksWithRunning = activeChecklist.tasks.map(t => {
-      if (t.id !== task.id) return t;
-      return {
-        ...t,
-        remarks: t.remarks.map(r => 
-          r.id === remarkToExecute.id 
-              ? { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|running]'), timestamp: new Date().toISOString() } 
-              : r
-        )
-      };
-    });
-
-    try {
-        const checklistDocRef = doc(db, 'checklists', activeChecklist.id);
-        await updateDoc(checklistDocRef, { tasks: tasksWithRunning });
-        
-        const taskForAi = tasksWithRunning.find(t => t.id === task.id);
-        if (!taskForAi) {
-            throw new Error("Could not find task to prepare for AI.");
-        }
-
-        const aiTodoText = remarkToExecute.text.replace(statusUpdateRegex, '').trim();
-        const contextDocuments = await getContextDocumentsForAi();
-        
-        const result = await executeAiTodo({
-            aiTodoText,
-            taskDescription: taskForAi.description,
-            discussionHistory: taskForAi.remarks.map(r => r.text).join('\n---\n'),
-            contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
-            apiKey: settings.apiKey,
-            model: settings.model as any,
-        });
-
-        const markdownBlob = new Blob([result.resultMarkdown], { type: 'text/markdown;charset=utf-8' });
-        const resultFileName = `execution_result_${remarkToExecute.id}.md`;
-        const resultPath = `checklists/${activeChecklist.id}/executions/${resultFileName}`;
-        const resultRef = storageRef(storage, resultPath);
-        await uploadBytes(resultRef, markdownBlob);
-
-        const resultRemark: Remark = {
-            id: `rem_res_${Date.now()}`,
-            text: `AI execution complete. [View results](storage://${resultPath})\n\n**Summary:**\n${result.summary}`,
-            userId: 'ai_executor',
-            timestamp: new Date().toISOString()
-        };
-        
-        const finalTasks = tasksWithRunning.map(t => {
-            if (t.id !== task.id) return t;
-            
-            const updatedRemarks = t.remarks.map(r => 
-                r.id === remarkToExecute.id 
-                ? { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|completed]') } 
-                : r
-            );
-            
-            return {
+            // Update status to 'running'
+            const tasksWithRunning = activeChecklist.tasks.map(t => {
+              if (t.id !== task.id) return t;
+              return {
                 ...t,
-                remarks: [...updatedRemarks, resultRemark]
-            };
-        });
-        await updateDoc(checklistDocRef, { tasks: finalTasks });
-
-        executionToast.update({ id: executionToast.id, title: "Execution Complete", description: "AI has finished the task and posted the results." });
-
-    } catch (error: any) {
-        handleAiError(error, executionToast.id);
-        
-        const revertTasks = tasksWithRunning.map(t => {
-            if (t.id !== task.id) return t;
-            
-            const failureReasonRemark: Remark = {
-                id: `rem_fail_${Date.now()}`,
-                text: `AI execution failed. Error: ${error.message || 'An unknown error occurred.'}`,
-                userId: 'system',
-                timestamp: new Date().toISOString()
-            };
-
-            const updatedRemarks = t.remarks.map(r => {
-                if (r.id === remarkToExecute.id) {
-                    return { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|failed]') };
-                }
-                return r;
+                remarks: t.remarks.map(r => 
+                  r.id === remark.id 
+                      ? { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|running]'), timestamp: new Date().toISOString() } 
+                      : r
+                )
+              };
             });
+            await updateDoc(doc(db, 'checklists', activeChecklist.id), { tasks: tasksWithRunning });
 
-            return { ...t, remarks: [...updatedRemarks, failureReasonRemark] };
-        });
-        
-        try {
-            const checklistDocRef = doc(db!, 'checklists', activeChecklist.id);
-            await updateDoc(checklistDocRef, { tasks: revertTasks });
-        } catch (revertError) {
-            console.error("CRITICAL: Failed to revert AI To-Do status after an execution error.", revertError);
+            try {
+                const taskForAi = tasksWithRunning.find(t => t.id === task.id)!;
+                const aiTodoText = remark.text.replace(statusUpdateRegex, '').trim();
+                const contextDocuments = await getContextDocumentsForAi();
+                
+                const result = await executeAiTodo({
+                    aiTodoText,
+                    taskDescription: taskForAi.description,
+                    discussionHistory: taskForAi.remarks.map(r => r.text).join('\n---\n'),
+                    contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
+                    apiKey: settings.apiKey,
+                    model: settings.model as any,
+                });
+
+                const markdownBlob = new Blob([result.resultMarkdown], { type: 'text/markdown;charset=utf-8' });
+                const resultFileName = `execution_result_${remark.id}.md`;
+                const resultPath = `checklists/${activeChecklist.id}/executions/${resultFileName}`;
+                const resultRef = storageRef(storage, resultPath);
+                await uploadBytes(resultRef, markdownBlob);
+
+                const resultRemark: Remark = {
+                    id: `rem_res_${Date.now()}`,
+                    text: `AI execution complete. [View results](storage://${resultPath})\n\n**Summary:**\n${result.summary}`,
+                    userId: 'ai_executor',
+                    timestamp: new Date().toISOString()
+                };
+                
+                // Update remark to 'completed' and add result remark
+                const finalTasks = tasksWithRunning.map(t => {
+                    if (t.id !== task.id) return t;
+                    const updatedRemarks = t.remarks.map(r => 
+                        r.id === remark.id 
+                        ? { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|completed]') } 
+                        : r
+                    );
+                    return { ...t, remarks: [...updatedRemarks, resultRemark] };
+                });
+                await updateDoc(doc(db, 'checklists', activeChecklist.id), { tasks: finalTasks });
+
+                executionToast.update({ id: executionToast.id, title: "Execution Complete", description: "AI has finished the task and posted the results." });
+            } catch (error: any) {
+                handleAiError(error, executionToast.id);
+                
+                // Update remark to 'failed' and add error remark
+                const tasksWithFailed = tasksWithRunning.map(t => {
+                    if (t.id !== task.id) return t;
+                    const failureReasonRemark: Remark = {
+                        id: `rem_fail_${Date.now()}`,
+                        text: `AI execution failed. Error: ${error.message || 'An unknown error occurred.'}`,
+                        userId: 'system',
+                        timestamp: new Date().toISOString()
+                    };
+                    const updatedRemarks = t.remarks.map(r => r.id === remark.id ? { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|failed]') } : r);
+                    return { ...t, remarks: [...updatedRemarks, failureReasonRemark] };
+                });
+                await updateDoc(doc(db, 'checklists', activeChecklist.id), { tasks: tasksWithFailed });
+            } finally {
+                setRunningRemarkIds(prev => prev.filter(id => id !== remark.id));
+            }
         }
-
-    } finally {
-        setRunningRemarkIds(prev => prev.filter(id => id !== remarkToExecute.id));
-    }
-  }, [activeChecklist, db, storage, getContextDocumentsForAi, toast, handleAiError, settings]);
+    };
+    processQueue();
+  }, [executionQueue, runningRemarkIds, activeChecklist, db, storage, getContextDocumentsForAi, handleAiError, toast, settings]);
 
   const handleRunRefinedPrompt = useCallback(async (taskToUpdate: Task, parentRemark: Remark) => {
     if (!activeChecklist || !db || !user) {
@@ -1539,7 +1557,6 @@ export default function Home() {
   };
 
   const handleNotificationClick = (notification: Notification) => {
-    setNotifications(prev => prev.filter(n => n.id !== notification.id));
     // Wait for the next render cycle for the notification to be removed from the DOM
     // before attempting to scroll to the element.
     setTimeout(() => {
@@ -1552,6 +1569,7 @@ export default function Home() {
             }, 3000);
         }
     }, 100);
+    setNotifications(prev => prev.filter(n => n.id !== notification.id));
   };
 
 
@@ -1603,6 +1621,7 @@ export default function Home() {
         notifications={notifications}
         onNotificationClick={handleNotificationClick}
         onNotificationsOpen={handleNotificationsOpen}
+        executionQueueSize={executionQueue.length}
       />
       <main className="p-4 sm:p-6 lg:p-8">
         <input
@@ -1625,7 +1644,7 @@ export default function Home() {
             <TaskTable
               checklist={activeChecklist}
               onUpdate={handleUpdateChecklist}
-              onExecuteAiTodo={handleExecuteAiTodo}
+              onExecuteAiTodo={enqueueAiTodo}
               onRunRefinedPrompt={handleRunRefinedPrompt}
               runningRemarkIds={runningRemarkIds}
               isOwner={isOwner}

@@ -1,6 +1,5 @@
 
 
-
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -40,6 +39,8 @@ import {
   Loader2,
   CornerDownRight,
   History,
+  Hourglass,
+  List,
 } from 'lucide-react';
 import type { Checklist, Task, TaskPriority, TaskStatus, Remark, AppSettings } from '@/lib/types';
 import { format, parseISO, formatDistanceToNow, isSameDay, addMinutes, isAfter } from 'date-fns';
@@ -134,11 +135,13 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTa
   }
 
   // Render AI To-Do
-  const newAiTodoMatch = text.match(/^\[ai-todo\|(pending|running|completed|failed)\]\s*(.*)/s);
-  if (newAiTodoMatch) {
-    const status = newAiTodoMatch[1];
-    const todoText = newAiTodoMatch[2].trim();
+  const aiTodoMatch = text.match(/^\[ai-todo\|(pending|queued|running|completed|failed)\]\s*(.*)/s);
+  if (aiTodoMatch) {
+    const status = aiTodoMatch[1];
+    const todoText = aiTodoMatch[2].trim();
     
+    const isPending = status === 'pending';
+    const isQueued = status === 'queued';
     const isRunning = status === 'running';
     const isCompleted = status === 'completed';
     const isFailed = status === 'failed';
@@ -147,33 +150,68 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTa
     const retryTime = addMinutes(completedTime, settings.rerunTimeout || 5);
     const canRetryCompleted = isAfter(new Date(), retryTime);
 
-    const showRetryButton = isRunning || isFailed || (isCompleted && canRetryCompleted);
+    const showRunButton = isPending;
+    const showRetryButton = isFailed || (isCompleted && canRetryCompleted);
     
-    const statusPill = (
-        <span className={`capitalize px-1.5 py-0.5 text-xs rounded-full font-medium ${
-            status === 'pending' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300' :
-            isRunning ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300' :
-            isCompleted ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300' :
-            'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300'
-        }`}>
-            {status}
-        </span>
-    );
+    const statusConfig = {
+        pending: {
+            icon: WandSparkles,
+            color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/50 dark:text-yellow-300',
+            iconColor: 'text-yellow-600 dark:text-yellow-400',
+            borderColor: 'border-yellow-200 dark:border-yellow-800',
+            bgColor: 'bg-yellow-50 dark:bg-yellow-900/20'
+        },
+        queued: {
+            icon: Hourglass,
+            color: 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-300',
+            iconColor: 'text-sky-600 dark:text-sky-400',
+            borderColor: 'border-sky-200 dark:border-sky-800',
+            bgColor: 'bg-sky-50 dark:bg-sky-900/20'
+        },
+        running: {
+            icon: Loader2,
+            color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300',
+            iconColor: 'text-blue-600 dark:text-blue-400',
+            borderColor: 'border-blue-200 dark:border-blue-800',
+            bgColor: 'bg-blue-50 dark:bg-blue-900/20'
+        },
+        completed: {
+            icon: CheckCircle2,
+            color: 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-300',
+            iconColor: 'text-green-600 dark:text-green-400',
+            borderColor: 'border-green-200 dark:border-green-800',
+            bgColor: 'bg-green-50 dark:bg-green-900/20'
+        },
+        failed: {
+            icon: History,
+            color: 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-300',
+            iconColor: 'text-red-600 dark:text-red-400',
+            borderColor: 'border-red-200 dark:border-red-800',
+            bgColor: 'bg-red-50 dark:bg-red-900/20'
+        }
+    }[status] || { icon: WandSparkles, color: '', iconColor: 'text-accent', borderColor: 'border-accent/30', bgColor: 'bg-accent/10' };
+
+    const StatusIcon = statusConfig.icon;
     
     return (
-      <div id={`remark-${id}`} className="p-2 mt-1 rounded-lg border border-accent/30 bg-accent/10">
+      <div id={`remark-${id}`} className={`p-2 mt-1 rounded-lg border ${statusConfig.borderColor} ${statusConfig.bgColor}`}>
         <div className="flex items-start gap-2.5">
-          <WandSparkles className="h-4 w-4 mt-0.5 text-accent flex-shrink-0" />
+          <StatusIcon className={`h-4 w-4 mt-0.5 ${statusConfig.iconColor} flex-shrink-0 ${isRunning ? 'animate-spin' : ''}`} />
           <div className="flex-1">
             <div className="flex justify-between items-center mb-1">
-                <h4 className="text-xs font-semibold tracking-wider uppercase text-accent">AI To-Do</h4>
-                {statusPill}
+                <h4 className="text-xs font-semibold tracking-wider uppercase text-muted-foreground">AI To-Do</h4>
+                <span className={`capitalize px-1.5 py-0.5 text-xs rounded-full font-medium ${statusConfig.color}`}>
+                  {status}
+                </span>
             </div>
             <p className="text-sm text-foreground/90 whitespace-pre-wrap">{todoText}</p>
-            {isRunning && (
-                <p className="text-xs text-muted-foreground mt-2">
-                    Started {formatDistanceToNow(new Date(timestamp), { addSuffix: true })}. You can retry in {settings.rerunTimeout || 5} minutes if it seems stuck.
-                </p>
+            {showRunButton && (
+                <div className="mt-2">
+                    <Button size="sm" variant="outline" onClick={() => onExecuteAiTodo(task, remark)} disabled={isTaskBusy || !isOwner}>
+                        <WandSparkles className="mr-2 h-4 w-4" />
+                        Run this To-Do
+                    </Button>
+                </div>
             )}
             {showRetryButton && (
                  <div className="mt-2">
@@ -445,8 +483,7 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                       <div className="mt-4 space-y-3">
                         {flattenedRemarks.map(({ remark, level }) => {
                           const isRunning = runningRemarkIds.includes(remark.id);
-                          const isPending = remark.text.startsWith('[ai-todo|pending]');
-
+                          
                           return (
                             <div key={remark.id} className="flex items-start gap-2.5" style={{ paddingLeft: `${level * 1.5}rem` }}>
                               <Avatar className="h-6 w-6 border text-xs">
@@ -468,14 +505,6 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                                     isOwner={isOwner}
                                     settings={settings}
                                   />
-                                  {isPending && (
-                                    <div className="mt-2">
-                                        <Button size="sm" variant="outline" onClick={() => onExecuteAiTodo(task, remark)} disabled={isRunning || isTaskBusy || !isOwner}>
-                                            {isRunning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <WandSparkles className="mr-2 h-4 w-4" />}
-                                            {isRunning ? 'Running...' : 'Run this To-Do'}
-                                        </Button>
-                                    </div>
-                                  )}
                               </div>
                             </div>
                           )

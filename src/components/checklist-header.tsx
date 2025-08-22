@@ -35,6 +35,7 @@ import {
   Settings,
   Bell,
   FileText,
+  ListOrdered,
 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import type { UserProfile, Notification } from '@/lib/types';
@@ -68,6 +69,7 @@ interface ChecklistHeaderProps {
   notifications: Notification[];
   onNotificationClick: (notification: Notification) => void;
   onNotificationsOpen: () => void;
+  executionQueueSize: number;
 }
 
 export function ChecklistHeader({
@@ -92,6 +94,7 @@ export function ChecklistHeader({
   notifications,
   onNotificationClick,
   onNotificationsOpen,
+  executionQueueSize,
 }: ChecklistHeaderProps) {
   const unreadNotifications = notifications.filter(n => !n.read);
 
@@ -144,6 +147,21 @@ export function ChecklistHeader({
            <Button onClick={onGetAiSuggestions} size="sm" variant="outline" disabled={!hasActiveChecklist || !isOwner}>
             <WandSparkles className="mr-2 h-4 w-4" /> Suggest AI To-Dos
           </Button>
+          {executionQueueSize > 0 && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="relative flex items-center">
+                    <ListOrdered className="h-5 w-5 text-muted-foreground" />
+                    <Badge variant="secondary" className="absolute -top-2 -right-3 px-1.5">{executionQueueSize}</Badge>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{executionQueueSize} AI task(s) in queue</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 w-9 p-0">
@@ -209,8 +227,8 @@ export function ChecklistHeader({
             <DropdownMenuContent align="end" className="w-80">
               <DropdownMenuLabel>Notifications</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              {unreadNotifications.length > 0 ? (
-                unreadNotifications.map(notification => (
+              {notifications.length > 0 ? (
+                notifications.map(notification => (
                   <DropdownMenuItem key={notification.id} onSelect={() => onNotificationClick(notification)}>
                     <FileText className="mr-2 h-4 w-4" />
                     <div className="flex-1 overflow-hidden">
