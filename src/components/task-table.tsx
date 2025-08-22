@@ -240,8 +240,8 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTa
       window.dispatchEvent(new CustomEvent('view-report', { detail: path }));
     };
     
-    const promptGenSummaryRegex = /\*\*Summary:\*\*\nGenerated a refined prompt for: (.*)/s;
-    const promptGenMatch = text.match(promptGenSummaryRegex);
+    const promptGenSummaryRegex = /Generated a refined prompt for:/;
+    const promptGenMatch = summary.match(promptGenSummaryRegex);
 
     return (
       <div id={`remark-${id}`} className="p-2 mt-1 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
