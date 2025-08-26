@@ -450,49 +450,52 @@ export default function Home() {
 
     return () => unsubscribe();
   }, [activeChecklist, toast]);
+  
+  const handleViewContent = useCallback(async (path: string) => {
+    if (!storage) return;
+
+    setIsReportLoading(true);
+    setIsReportViewerOpen(true);
+    setReportContent(''); // Clear previous content
+
+    try {
+      const fileRef = storageRef(storage, path);
+      const fileBytes = await getBytes(fileRef);
+      const decoder = new TextDecoder('utf-8');
+      const markdownContent = decoder.decode(fileBytes);
+      setReportContent(markdownContent);
+    } catch (error: any) {
+      console.error("Error fetching content:", error);
+      let description = "Could not load the content from storage.";
+      if (error.code === 'storage/object-not-found') {
+        description = "The file was not found. It may have been deleted.";
+      } else if (error.code === 'storage/unauthorized') {
+        description = "You do not have permission to view this file. Check your Storage Security Rules.";
+      }
+      toast({
+        title: "Error Loading Content",
+        description,
+        variant: "destructive"
+      });
+      setIsReportViewerOpen(false); // Close dialog on error
+    } finally {
+      setIsReportLoading(false);
+    }
+  }, [storage, toast]);
 
   // Effect to handle viewing a report
   useEffect(() => {
     const handleViewReport = async (event: Event) => {
       const customEvent = event as CustomEvent<string>;
       const storagePath = customEvent.detail;
-      
-      if (!storage) return;
-
-      setIsReportLoading(true);
-      setIsReportViewerOpen(true);
-      setReportContent(''); // Clear previous content
-
-      try {
-        const fileRef = storageRef(storage, storagePath);
-        const fileBytes = await getBytes(fileRef);
-        const decoder = new TextDecoder('utf-8');
-        const markdownContent = decoder.decode(fileBytes);
-        setReportContent(markdownContent);
-      } catch (error: any) {
-        console.error("Error fetching report:", error);
-        let description = "Could not load the report from storage.";
-        if (error.code === 'storage/object-not-found') {
-          description = "The report file was not found in storage. It may have been deleted.";
-        } else if (error.code === 'storage/unauthorized') {
-          description = "You do not have permission to view this report. Check your Storage Security Rules.";
-        }
-        toast({
-          title: "Error Loading Report",
-          description,
-          variant: "destructive"
-        });
-        setIsReportViewerOpen(false); // Close dialog on error
-      } finally {
-        setIsReportLoading(false);
-      }
+      await handleViewContent(storagePath);
     };
 
     window.addEventListener('view-report', handleViewReport);
     return () => {
       window.removeEventListener('view-report', handleViewReport);
     };
-  }, [storage, toast]);
+  }, [handleViewContent]);
   
   const handleAiError = (error: any, toastId?: string) => {
     console.error("AI execution failed:", error);
@@ -1739,6 +1742,7 @@ export default function Home() {
               isUploading={isUploading}
               storageCorsError={storageCorsError}
               onDelete={handleDeleteDocument}
+              onView={(doc) => handleViewContent(doc.storagePath)}
               isCollaborator={!isOwner}
             />
             <TaskTable

@@ -24,12 +24,13 @@ interface DocumentManagerProps {
   documents: Document[];
   onUpload: (files: FileList) => Promise<void>;
   onDelete: (documentId: string) => Promise<void>;
+  onView: (document: Document) => void;
   isUploading: boolean;
   storageCorsError: boolean;
   isCollaborator: boolean;
 }
 
-export function DocumentManager({ documents, onUpload, onDelete, isUploading, storageCorsError, isCollaborator }: DocumentManagerProps) {
+export function DocumentManager({ documents, onUpload, onDelete, onView, isUploading, storageCorsError, isCollaborator }: DocumentManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const storageBucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
@@ -119,11 +120,15 @@ export function DocumentManager({ documents, onUpload, onDelete, isUploading, st
                <h4 className="text-sm font-medium">Associated Documents</h4>
               <ul className="rounded-md border">
                 {documents.map((doc) => (
-                  <li key={doc.id} className="flex items-center justify-between p-3 border-b last:border-b-0">
-                      <div className="flex items-center gap-3 overflow-hidden">
+                  <li key={doc.id} className="flex items-center justify-between pl-3 pr-1.5 py-1.5 border-b last:border-b-0">
+                      <button 
+                        onClick={() => onView(doc)}
+                        className="flex items-center gap-3 overflow-hidden text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring rounded-sm -ml-1 px-1"
+                        title={`View ${doc.fileName}`}
+                      >
                           <File className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-                          <span className="font-medium text-sm truncate" title={doc.fileName}>{doc.fileName}</span>
-                      </div>
+                          <span className="font-medium text-sm truncate">{doc.fileName}</span>
+                      </button>
                     <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive flex-shrink-0" onClick={() => setDocToDelete(doc)} disabled={isUploading || isCollaborator}>
                         <Trash2 className="h-4 w-4" />
                         <span className="sr-only">Delete document</span>
