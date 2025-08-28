@@ -100,16 +100,16 @@ export function ReportViewerDialog({ open, onOpenChange, content, isLoading }: R
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-3xl h-[80vh] flex flex-col">
+      <DialogContent className="max-w-3xl w-[90vw] h-[80vh] flex flex-col">
         <DialogHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-start gap-4">
             <div className="space-y-1.5">
               <DialogTitle>Document Viewer</DialogTitle>
               <DialogDescription>
                 Viewing a project document or an AI-generated report.
               </DialogDescription>
             </div>
-            <div className="flex items-center gap-2 ml-4 flex-shrink-0">
+            <div className="flex items-center gap-2 ml-4 flex-shrink-0 pt-1">
                 <Button variant="outline" size="icon" onClick={handleDownload} disabled={!isContentViewableAsText}>
                   <Download className="h-4 w-4" />
                   <span className="sr-only">Download</span>
@@ -129,7 +129,7 @@ export function ReportViewerDialog({ open, onOpenChange, content, isLoading }: R
               </div>
             ) : isContentViewableAsText ? (
                 isMarkdown(content) ? (
-                  <article className="prose prose-sm dark:prose-invert max-w-none p-4">
+                  <article className="prose prose-sm dark:prose-invert max-w-none p-4 break-words">
                     <ReactMarkdown remarkPlugins={[remarkGfm]}>
                       {content}
                     </ReactMarkdown>
