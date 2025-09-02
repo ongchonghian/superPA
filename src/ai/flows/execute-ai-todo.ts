@@ -12,6 +12,9 @@
 import {ai as defaultAi, configureAi} from '@/ai/genkit';
 import {z} from 'genkit';
 import {type ModelReference} from 'genkit/model';
+import { GEMINI_MODEL_CONFIGS } from '@/lib/data';
+import { GeminiModel } from '@/lib/types';
+
 
 const DocumentContextSchema = z.object({
   fileName: z.string(),
@@ -26,6 +29,8 @@ const ExecuteAiTodoInputSchema = z.object({
   // Config parameters
   apiKey: z.string().optional(),
   model: z.custom<ModelReference<any>>().optional(),
+  maxInputTokens: z.number().optional(),
+  maxOutputTokens: z.number().optional(),
 });
 export type ExecuteAiTodoInput = z.infer<typeof ExecuteAiTodoInputSchema>;
 
@@ -37,6 +42,8 @@ export type ExecuteAiTodoOutput = z.infer<typeof ExecuteAiTodoOutputSchema>;
 
 export async function executeAiTodo(input: ExecuteAiTodoInput): Promise<ExecuteAiTodoOutput> {
   const ai = configureAi(input.apiKey, input.model);
+  const modelName = (input.model as GeminiModel) || 'googleai/gemini-1.5-pro-latest';
+  const modelConfig = GEMINI_MODEL_CONFIGS[modelName] || GEMINI_MODEL_CONFIGS['googleai/gemini-1.5-pro-latest'];
   
   // This regex is used to determine if the task is a prompt engineering task.
   const promptEngineeringRegex = /Refine the prompt for: (.*)/s;
@@ -57,6 +64,10 @@ export async function executeAiTodo(input: ExecuteAiTodoInput): Promise<ExecuteA
           promptEngineeringTopic: z.string().optional(),
         })},
         output: {schema: ExecuteAiTodoOutputSchema},
+        config: {
+          maxOutputTokens: flowInput.maxOutputTokens || modelConfig.defaultOutput,
+          maxInputTokens: flowInput.maxInputTokens || modelConfig.defaultInput,
+        },
         prompt: `You are an expert-level AI assistant. Your goal is to provide a comprehensive, detailed, and well-structured response in Markdown format that directly fulfills the user's request, and then provide a brief summary of your output.
 
 {{#if contextDocuments}}

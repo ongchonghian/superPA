@@ -1576,6 +1576,8 @@ export default function Home() {
         url,
         apiKey: settings.apiKey,
         model: settings.model as any,
+        maxInputTokens: settings.maxInputTokens,
+        maxOutputTokens: settings.maxOutputTokens,
       });
 
       const markdownBlob = new Blob([result.resultMarkdown], { type: 'text/markdown;charset=utf-8' });

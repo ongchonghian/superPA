@@ -17,15 +17,17 @@
 import {ai as defaultAi, configureAi} from '@/ai/genkit';
 import {z} from 'genkit';
 import {type ModelReference} from 'genkit/model';
+import { GEMINI_MODEL_CONFIGS } from '@/lib/data';
+import { GeminiModel } from '@/lib/types';
 
-// In a real-world scenario, you would fetch the URL content on the server
-// before passing it to the AI. For this app, we'll pass the URL directly
-// and instruct the LLM to act as if it has read it.
+
 const ProcessUrlInputSchema = z.object({
   url: z.string().url().describe('The URL of the webpage to analyze.'),
   // Config parameters
   apiKey: z.string().optional(),
   model: z.custom<ModelReference<any>>().optional(),
+  maxInputTokens: z.number().optional(),
+  maxOutputTokens: z.number().optional(),
 });
 export type ProcessUrlInput = z.infer<typeof ProcessUrlInputSchema>;
 
@@ -37,6 +39,8 @@ export type ProcessUrlOutput = z.infer<typeof ProcessUrlOutputSchema>;
 
 export async function processUrl(input: ProcessUrlInput): Promise<ProcessUrlOutput> {
   const ai = configureAi(input.apiKey, input.model);
+  const modelName = (input.model as GeminiModel) || 'googleai/gemini-1.5-pro-latest';
+  const modelConfig = GEMINI_MODEL_CONFIGS[modelName] || GEMINI_MODEL_CONFIGS['googleai/gemini-1.5-pro-latest'];
 
   const processUrlFlow = ai.defineFlow(
     {
@@ -45,21 +49,14 @@ export async function processUrl(input: ProcessUrlInput): Promise<ProcessUrlOutp
       outputSchema: ProcessUrlOutputSchema,
     },
     async (flowInput) => {
-      // This is a placeholder for where you would fetch the URL content.
-      // Since Genkit flows running in Firebase can't make arbitrary outbound network requests
-      // by default, we rely on the model's existing knowledge or a prompt structure
-      // that assumes the content is available.
-      //
-      // const response = await fetch(flowInput.url);
-      // const content = await response.text();
       
       const prompt = ai.definePrompt({
         name: 'processUrlPrompt',
         input: {schema: ProcessUrlInputSchema},
         output: {schema: ProcessUrlOutputSchema},
         config: {
-          maxOutputTokens: 8192,
-          maxInputTokens: 8192,
+            maxOutputTokens: flowInput.maxOutputTokens || modelConfig.defaultOutput,
+            maxInputTokens: flowInput.maxInputTokens || modelConfig.defaultInput,
         },
         prompt: `<role>
 You are a Virtual Interdisciplinary Analysis Team, combining the following expert personas to conduct a comprehensive website structure analysis:

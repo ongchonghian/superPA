@@ -76,6 +76,8 @@ export interface AppSettings {
   apiKey: string;
   model: GeminiModel | string; // Allow string for flexibility, but prefer GeminiModel
   rerunTimeout: number; // in minutes
+  maxInputTokens?: number;
+  maxOutputTokens?: number;
 }
 
 declare global {

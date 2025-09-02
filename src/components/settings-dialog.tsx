@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -20,10 +20,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { GEMINI_MODELS } from '@/lib/data';
-import type { AppSettings } from '@/lib/types';
+import { GEMINI_MODELS, GEMINI_MODEL_CONFIGS } from '@/lib/data';
+import type { AppSettings, GeminiModel } from '@/lib/types';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
-import { KeyRound, Timer, Github } from 'lucide-react';
+import { KeyRound, Timer, Github, Info } from 'lucide-react';
 import { Separator } from './ui/separator';
 
 interface SettingsDialogProps {
@@ -48,6 +48,14 @@ export function SettingsDialog({
   const handleSave = () => {
     onSave(settings);
   };
+
+  const selectedModelConfig = useMemo(() => {
+    const modelKey = settings.model as GeminiModel;
+    if (GEMINI_MODEL_CONFIGS[modelKey]) {
+      return GEMINI_MODEL_CONFIGS[modelKey];
+    }
+    return null;
+  }, [settings.model]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -99,6 +107,44 @@ export function SettingsDialog({
                   </SelectContent>
                 </Select>
               </div>
+
+               <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="max-input-tokens">Max Input Tokens</Label>
+                    <Input
+                      id="max-input-tokens"
+                      type="number"
+                      placeholder="e.g., 262144"
+                      value={settings.maxInputTokens || ''}
+                      onChange={(e) => setSettings({ ...settings, maxInputTokens: parseInt(e.target.value, 10) || undefined })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="max-output-tokens">Max Output Tokens</Label>
+                    <Input
+                      id="max-output-tokens"
+                      type="number"
+                      placeholder="e.g., 2048"
+                      value={settings.maxOutputTokens || ''}
+                      onChange={(e) => setSettings({ ...settings, maxOutputTokens: parseInt(e.target.value, 10) || undefined })}
+                    />
+                  </div>
+              </div>
+
+              {selectedModelConfig && (
+                <Alert variant="default">
+                    <Info className="h-4 w-4" />
+                    <AlertTitle>Model Token Guidance</AlertTitle>
+                    <AlertDescription>
+                        For <strong>{settings.model}</strong>:<br/>
+                        - Max Input: {selectedModelConfig.maxInput.toLocaleString()}<br/>
+                        - Max Output: {selectedModelConfig.maxOutput.toLocaleString()}<br/>
+                        - Leave fields blank to use model defaults (Input: {selectedModelConfig.defaultInput.toLocaleString()}, Output: {selectedModelConfig.defaultOutput.toLocaleString()}).
+                    </AlertDescription>
+                </Alert>
+              )}
+
+
                <div className="space-y-2">
                 <Label htmlFor="rerun-timeout">Re-run Timeout (minutes)</Label>
                 <Input
