@@ -29,7 +29,6 @@ const ExecuteAiTodoInputSchema = z.object({
   // Config parameters
   apiKey: z.string().optional(),
   model: z.custom<ModelReference<any>>().optional(),
-  maxInputTokens: z.number().optional(),
   maxOutputTokens: z.number().optional(),
 });
 export type ExecuteAiTodoInput = z.infer<typeof ExecuteAiTodoInputSchema>;
@@ -66,7 +65,6 @@ export async function executeAiTodo(input: ExecuteAiTodoInput): Promise<ExecuteA
         output: {schema: ExecuteAiTodoOutputSchema},
         config: {
           maxOutputTokens: flowInput.maxOutputTokens || modelConfig.defaultOutput,
-          maxInputTokens: flowInput.maxInputTokens || modelConfig.defaultInput,
         },
         prompt: `You are an expert-level AI assistant. Your goal is to provide a comprehensive, detailed, and well-structured response in Markdown format that directly fulfills the user's request, and then provide a brief summary of your output.
 

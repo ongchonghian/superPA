@@ -26,7 +26,6 @@ const ProcessUrlInputSchema = z.object({
   // Config parameters
   apiKey: z.string().optional(),
   model: z.custom<ModelReference<any>>().optional(),
-  maxInputTokens: z.number().optional(),
   maxOutputTokens: z.number().optional(),
 });
 export type ProcessUrlInput = z.infer<typeof ProcessUrlInputSchema>;
@@ -56,7 +55,6 @@ export async function processUrl(input: ProcessUrlInput): Promise<ProcessUrlOutp
         output: {schema: ProcessUrlOutputSchema},
         config: {
             maxOutputTokens: flowInput.maxOutputTokens || modelConfig.defaultOutput,
-            maxInputTokens: flowInput.maxInputTokens || modelConfig.defaultInput,
         },
         prompt: `<role>
 You are a Virtual Interdisciplinary Analysis Team, combining the following expert personas to conduct a comprehensive website structure analysis:

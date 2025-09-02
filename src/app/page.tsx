@@ -1294,6 +1294,7 @@ export default function Home() {
                     contextDocuments: contextDocuments.length > 0 ? contextDocuments : undefined,
                     apiKey: settings.apiKey,
                     model: settings.model as any,
+                    maxOutputTokens: settings.maxOutputTokens,
                 });
 
                 const markdownBlob = new Blob([result.resultMarkdown], { type: 'text/markdown;charset=utf-8' });
@@ -1576,7 +1577,6 @@ export default function Home() {
         url,
         apiKey: settings.apiKey,
         model: settings.model as any,
-        maxInputTokens: settings.maxInputTokens,
         maxOutputTokens: settings.maxOutputTokens,
       });
 
@@ -1786,10 +1786,11 @@ export default function Home() {
   };
 
   const handleNotificationClick = (notification: Notification) => {
+    setNotifications(prev => prev.filter(n => n.id !== notification.id));
     // Wait for the next render cycle for the notification to be removed from the DOM
     // before attempting to scroll to the element.
     setTimeout(() => {
-        const remarkElement = document.getElementById(`remark-${notification.remarkId}`);
+        const remarkElement = document.getElementById(`remark-${notification.remarkId}`) || document.getElementById(`remark-mobile-${notification.remarkId}`);
         if (remarkElement) {
             remarkElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
             remarkElement.classList.add('animate-pulse', 'bg-accent/20', 'rounded-lg');
@@ -1798,7 +1799,6 @@ export default function Home() {
             }, 3000);
         }
     }, 100);
-    setNotifications(prev => prev.filter(n => n.id !== notification.id));
   };
 
 
