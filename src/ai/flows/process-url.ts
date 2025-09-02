@@ -175,7 +175,7 @@ Analytical, Objective, Professional. Frame speculations as 'inferred' or 'sugges
 </formatting>
 
 <task>
-Execute the CTO Consultant due diligence analysis on the company **Vercel** using their public website: **https://vercel.com**. Generate the complete, final report now.
+Execute the CTO Consultant due diligence analysis on the company whose public website is **{{{url}}}**. Generate the complete, final report now.
 </task>`,
       });
       
