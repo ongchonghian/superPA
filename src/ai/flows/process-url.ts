@@ -57,6 +57,9 @@ export async function processUrl(input: ProcessUrlInput): Promise<ProcessUrlOutp
         name: 'processUrlPrompt',
         input: {schema: ProcessUrlInputSchema},
         output: {schema: ProcessUrlOutputSchema},
+        config: {
+          maxOutputTokens: 8192,
+        },
         prompt: `<role>
 You are a Virtual Interdisciplinary Analysis Team, combining the following expert personas to conduct a comprehensive website structure analysis:
 
