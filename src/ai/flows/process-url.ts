@@ -38,8 +38,8 @@ export type ProcessUrlOutput = z.infer<typeof ProcessUrlOutputSchema>;
 
 export async function processUrl(input: ProcessUrlInput): Promise<ProcessUrlOutput> {
   const ai = configureAi(input.apiKey, input.model);
-  const modelName = (input.model as GeminiModel) || 'googleai/gemini-1.5-pro-latest';
-  const modelConfig = GEMINI_MODEL_CONFIGS[modelName] || GEMINI_MODEL_CONFIGS['googleai/gemini-1.5-pro-latest'];
+  const modelName = (input.model as GeminiModel) || 'gemini-1.5-pro-latest';
+  const modelConfig = GEMINI_MODEL_CONFIGS[modelName] || GEMINI_MODEL_CONFIGS['gemini-1.5-pro-latest'];
 
   const processUrlFlow = ai.defineFlow(
     {
@@ -57,128 +57,98 @@ export async function processUrl(input: ProcessUrlInput): Promise<ProcessUrlOutp
             maxOutputTokens: flowInput.maxOutputTokens || modelConfig.defaultOutput,
         },
         prompt: `<role>
-You are a Virtual Interdisciplinary Analysis Team, combining the following expert personas to conduct a comprehensive website structure analysis:
+You will act as a committee of the following experts, synthesizing your collective knowledge to solve the problem step-by-step:
 
-- **SEO Analyst:** Focus on internal linking structure, crawlability, keyword opportunities in anchor text/headings, and overall site architecture for SEO.
-- **Data Scientist:** Focus on extracting structured data, analyzing the site's network graph (nodes and edges), identifying content patterns, and quantifying site topology.
-- **UX/Information Architect:** Focus on user navigation flow, information hierarchy, clarity of link anchor text, and identifying potential dead-ends or confusing pathways.
-- **CTO Consultant:** Your specialisation is conducting rapid yet comprehensive preliminary due diligence on companies, based solely on their public-facing website and associated digital footprint (e.g., linked technical blogs, careers pages).
-Your primary goal is to provide a strategic analysis that bridges the gap between the company's business proposition and its underlying technology. You must infer, assess, and critique their likely technology strategy, architecture, and operational maturity.
-Your analysis must be objective, evidence-based, and framed with actionable insights for a senior stakeholder (e.g., an investor, a potential acquirer, or a C-suite executive).
-
+- **CTO Consultant (SME Specialist):** Deep expertise in the Singaporean tech landscape, SME operational challenges, and government support schemes. A pragmatic and strategic thinker focused on actionable, cost-effective technology roadmaps.
+- **Venture Capital Technical Due Diligence Analyst:** Skilled at rapidly assessing a company's technology stack, architecture, and engineering team from publicly available data. Focuses on scalability, technical debt, and growth potential for investment evaluation.
+- **Digital Transformation Strategist:** Focuses on aligning technology with business objectives to drive growth and efficiency. Experienced in change management and building business cases for technology investment within SMEs.
 </role>
 
 <audience>
-The target audience for this report is a technical stakeholder group, including web developers, SEO specialists, and digital marketing managers who require a detailed, data-driven overview of the website's architecture and content hierarchy.
+The target audience for your response is the senior leadership team (CEO, Managing Director, Board of Directors) of a Singapore-based SME seeking to leverage technology for business growth and operational improvement.
 </audience>
 
 <context>
-The core task is to conduct recursive web crawl of a target website to analyze its internal structure. The analysis is for a client seeking to identify opportunities for technological uplift. The goal is to provide a strategic "as-is" assessment of their current technology posture to pinpoint specific areas where technology can be better leveraged to enhance business value, improve operational efficiency, and drive growth. The client is looking for a clear, actionable roadmap for technological improvement.
+You have been collectively engaged to perform a rapid, preliminary technical due diligence on a Singapore-based SME, 'InnovateSG Logistics'. The client's leadership is not deeply technical and needs to understand their current technology posture in plain business terms. Your goal is to provide a strategic 'as-is' assessment using only their public digital footprint, pinpointing specific areas for improvement. The final report must be an actionable roadmap that identifies relevant Singapore government grants to de-risk investment and accelerate transformation.
 </context>
 
 <instructions>
-You must follow this structured, step-by-step process to generate the final report:
-
-1.  **Acknowledge & Plan:** Begin by stating the target URL and confirming the analysis parameters: a crawl depth of 4 levels beyond the start URL, focusing only on internal links.
-
-2.  **Crawl & Data Extraction:**  Traverse the site starting from the given URL. For each discovered internal page (up to the depth limit), assume you are extracting the following information:
-    *   URL
-    *   HTTP Status (assume 200 for all found links)
-    *   Page Title (\`<title>\` tag)
-    *   Primary Heading (H1 tag)
-    *   List of all internal outbound links on the page.
-
-3.  **Synthesize Findings:** Analyze the collected data from the perspective of each expert in your team:
-    *   **CTO Consultant:** ANALYTICAL FRAMEWORK AND REQUIRED OUTPUT STRUCTURE
-You must structure your response using the following Markdown format precisely. Base all inferences on publicly available information from the provided URL and its directly linked pages. Where you make an inference, you must state the evidence supporting it (e.g., "Inferred from job postings for 'Senior DevOps Engineer (AWS)'...").
-1. Executive Summary
-* Provide a concise, top-level summary (under 150 words) of the company's technological posture.
-* State your overall confidence level (High, Medium, Low) in their technical strategy based on the available evidence.
-* List the top 3 most critical findings (e.g., a key strength, a significant risk).
-2. Business & Product Analysis
-* Core Value Proposition: What problem do they solve, and for whom?
-* Product/Service Offering: Detail their main products or services.
-* Target Market: Describe their apparent customer segment (e.g., Enterprise B2B, SME, B2C).
-3. Inferred Technology Stack & Architecture
-* Frontend: Infer frameworks, libraries, and technologies (e.g., React, Vue, Angular).
-    * Evidence: Cite specific JavaScript libraries loaded, code patterns, or job descriptions.
-* Backend: Infer languages, frameworks, and databases (e.g., Python/Django, Node.js/Express, Java/Spring, PostgreSQL).
-    * Evidence: Cite API response headers, career page listings, or technical blog posts.
-* Infrastructure & DevOps: Infer cloud provider, containerisation, and CI/CD practices (e.g., AWS, GCP, Azure; Docker, Kubernetes).
-    * Evidence: Cite mentions in privacy policies, case studies, or job requirements for SRE/DevOps roles.
-* Data & AI/ML: Infer use of data analytics platforms, business intelligence tools, or machine learning frameworks.
-    * Evidence: Cite case studies, white papers, or mentions of "data science" or specific AI technologies.
-* Third-Party Integrations: List key third-party services identified (e.g., Stripe for payments, Intercom for chat, Auth0 for authentication).
-    * Evidence: Cite observed scripts, logos, or partnership pages.
-4. Organisational & Engineering Culture Analysis
-* Team Structure: Infer the potential size and structure of the engineering team.
-    * Evidence: Analyse the number and types of roles on their careers page.
-* Engineering Maturity: Assess their likely software development lifecycle (SDLC) maturity. Look for signs of Agile methodologies, testing culture, or DevOps principles.
-    * Evidence: Analyse language used in job descriptions (e.g., "TDD," "CI/CD," "Agile"), technical blog content, or open-source contributions.
-5. SWOT Analysis (Technology-Centric)
-Present this in a structured table.
-Category	Analysis & Evidence
-Strengths	(e.g., "Appears to leverage a modern, scalable microservices architecture, evidenced by job postings for Kubernetes experts.")
-Weaknesses	(e.g., "Website shows signs of being a monolithic legacy application, suggesting potential scalability challenges.")
-Opportunities	(e.g., "No mention of AI/ML; significant opportunity to leverage their data assets for predictive features.")
-Threats	(e.g., "Heavy reliance on a single cloud provider poses a vendor lock-in risk.")
-6. Strategic Recommendations & Actionable Insights
-* Top 3 Recommendations: Provide three clear, actionable recommendations.
-    1. (e.g., "Investigate their data security and compliance posture, as no certifications like ISO 27001 are mentioned.")
-    2. (e.g., "Validate the scalability of their backend architecture before committing to a partnership.")
-    3. (e.g., "Prioritise a technical deep-dive with their engineering lead to understand their approach to technical debt.")
-7. Red Flags & Questions for Deeper Due Diligence
-* List specific, probing questions that need to be answered in a formal due diligence process.
-    * (e.g., "What is your engineer-to-operations staff ratio?")
-    * (e.g., "Can you provide documentation on your disaster recovery and business continuity plans?")
-    * (e.g., "What is your current approach to managing and monitoring technical debt?")
-    * (e.g., "How is your intellectual property (IP) protected, particularly concerning open-source software usage?")
-
-    *   **Data Scientist:** Visualize the structure as a graph. Are there distinct clusters of content? What are the most connected nodes (pages)?
-    *   **UX/IA:** Trace user paths. How many clicks does it take to reach key information? Is the navigation hierarchy logical?
-
-4.  **Construct the Report:** Assemble the synthesized findings into the final Markdown report, meticulously following the structure defined in \`<output_format>\`. Ensure each section is clearly written and provides insights backed by the crawled data.
+Follow this step-by-step process to construct your response:
+1.  **Analyze the Target:** Thoroughly examine the website for the target company, \`www.innovatesg-logistics.com.sg\`, and any linked public assets (e.g., technical blogs, careers pages, social media profiles).
+2.  **Synthesize Expert Viewpoints:** For each piece of information, consider it from the perspective of all three expert roles defined in \`<role>\`.
+3.  **Structure the Report:** Sequentially draft the report following the precise structure and requirements outlined in \`<output_format>\` and \`<report_details>\`.
+4.  **Evidence-Based Inference:** For every inference you make about their technology, team, or strategy, you must cite the specific evidence (e.g., 'job posting for a React developer', 'website built on WordPress plugin') and assign a confidence score (Low, Medium, High).
+5.  **Localize and Contextualize:** Explicitly and consistently integrate the Singaporean SME context. Reference relevant government grants (e.g., PSG, EDG, SFEC), initiatives (e.g., SMEs Go Digital), and common local challenges (e.g., high manpower costs, digital skills gap) in the SWOT and Roadmap sections.
+6.  **Final Review:** Before concluding, review the entire report to ensure it meets all constraints, maintains the specified tone, and directly addresses the client's needs as described in the \`<context>\`.
 </instructions>
 
 <output_format>
-The output must be a single, comprehensive report in Markdown format. The report must contain the following sections, with the specified content:
-
-**1. Executive Summary:**
-   - A high-level overview of the findings, synthesizing the key insights from all expert perspectives. State the total number of pages discovered and the overall structural integrity of the site.
-
-**2. Discovered Site Map:**
-   - A hierarchical representation of the crawled site structure, presented as a nested Markdown bulleted list. Each item should be formatted as \`* [Page Title](URL)\`.
-
-**3. Page-Level Content Analysis:**
-   - A Markdown table summarizing key data for a representative sample of up to 10 critical pages discovered (e.g., the homepage, key product pages, etc.).
-   - Columns must be: \`URL\`, \`Page Title\`, \`H1 Tag\`, \`Internal Outbound Links (Count)\`.
-
-**4. Internal Linking Insights:**
-   - A section with four sub-headings, one for each expert persona (\`### SEO Analyst Insights\`, \`### Data Scientist Insights\`, etc.).
-   - Under each sub-heading, provide 2-3 bullet points of specific, actionable insights based on the analysis of the site's internal linking structure.
+A structured report using Markdown. It must include the following top-level sections in this exact order: 
+1. Executive Summary
+2. Business & Product Analysis
+3. Inferred Technology Stack & Architecture
+4. Organisational & Engineering Culture Analysis
+5. SWOT Analysis (Singapore Technology-Centric)
+6. Strategic Roadmap for Technological Uplift (Singapore SME Context)
+7. Key Areas for Further Investigation
 </output_format>
 
-<language>
-Use UK English exclusively.
-</language>
+<report_details>
+You must adhere to the following detailed requirements for each section of the report:
+
+**1. Executive Summary**
+- Provide a concise summary (under 150 words) of the company's technological posture and alignment with business goals.
+- State your overall confidence level (High, Medium, Low) in their technical strategy.
+- List the top 3 most critical findings for technological uplift, referencing Singaporean SME challenges.
+
+**2. Business & Product Analysis**
+- **Core Value Proposition:** What problem do they solve, and for whom?
+- **Product/Service Offering:** Detail their main products or services.
+- **Target Market:** Describe their apparent customer segment.
+- **Inferred Business Model:** Identify their likely business model (e.g., B2B SaaS, transactional).
+
+**3. Inferred Technology Stack & Architecture**
+- **Frontend:** Infer frameworks/libraries.
+- **Backend:** Infer languages/frameworks/databases.
+- **Infrastructure & DevOps:** Infer cloud provider, containerization, CI/CD.
+- **Third-Party Integrations:** List key services identified (e.g., Stripe, Intercom).
+- **Architectural Assessment:** Provide a high-level assessment (e.g., Monolith, Microservices) and visualize the inferred components using a Mermaid diagram (\`graph TD\`).
+
+**4. Organisational & Engineering Culture Analysis**
+- **Team Structure & Scale:** Infer the engineering team's size and structure.
+- **Engineering Maturity:** Assess their likely SDLC maturity (e.g., Agile, DevOps).
+- **Hiring & Talent Strategy:** Analyze their careers page to infer hiring priorities.
+
+**5. SWOT Analysis (Singapore Technology-Centric)**
+- Present in a structured table with 'Category' and 'Analysis & Evidence' columns.
+- Focus on Strengths, Weaknesses, Opportunities, and Threats from a technology perspective within the Singaporean context.
+
+**6. Strategic Roadmap for Technological Uplift (Singapore SME Context)**
+- Provide three clear, actionable recommendations structured under these pillars: \`Fortifying Operational Agility\`, \`Building a Future-Ready Workforce\`, and \`Harnessing Technology for Competitive Advantage\`.
+- Explicitly link each recommendation to a relevant Singaporean government grant or support scheme.
+
+**7. Key Areas for Further Investigation**
+- List specific, probing questions for the client to uncover deeper insights and opportunities, framed within the Singaporean context.
+</report_details>
+
 <tone>
-Professional, objective, and analytical. Avoid speculative language where possible; instead, frame it as "inferred" or "suggests."
+Analytical, Objective, Consultative. Use UK English. Frame all speculations as "inferred" or "suggests."
 </tone>
 
-<formatting>
-Formatting: Strictly adhere to the Markdown structure provided above, including headings, bullet points, and the SWOT table. This structure is non-negotiable.
-Evidence & Confidence: For every inference made, you must cite the specific evidence and assign a confidence score (Low, Medium, High).
-Visualisation: Use Mermaid diagrams (specifically graph TD) to illustrate the inferred system architecture under the "Architectural Assessment" section.
-<formatting>
+<positive_constraints>
+- Base all analysis strictly on publicly available information from the company's digital footprint.
+- Explicitly connect all recommendations and analysis to the specific context of the Singaporean SME ecosystem.
+- For every inference, you must cite the supporting evidence and assign a confidence score (Low, Medium, High).
+</positive_constraints>
 
 <negative_constraints>
-- You must not follow or analyze any external links (links pointing to a different domain).
-- You must not attempt to execute JavaScript or interact with dynamic page elements like forms.
-- All analysis must be based on the conceptual crawl of static HTML content.
-- The crawl depth is strictly limited to a maximum depth of 4 levels beyond the starting URL (Start URL -> Level 1 -> Level 2 -> Level 3 -> Level 4).
+- Do not invent any information that cannot be supported by publicly available evidence.
+- Do not provide direct financial investment advice.
+- Do not make definitive statements where an inference is required; use cautious, consultative language.
 </negative_constraints>
+
 <task>
-Execute the full analysis and generate the comprehensive report for the user-provided URL: {{{url}}}
+Conduct the comprehensive due diligence analysis on 'InnovateSG Logistics' (www.innovatesg-logistics.com.sg) and generate the full strategic report now, following all provided instructions and formatting requirements.
 </task>
 `,
       });
