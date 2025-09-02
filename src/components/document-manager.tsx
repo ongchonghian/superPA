@@ -22,7 +22,7 @@ import {
 
 interface DocumentManagerProps {
   documents: Document[];
-  onUpload: (files: FileList) => Promise<void>;
+  onUpload: (files: FileList | null) => Promise<void>;
   onDelete: (documentId: string) => Promise<void>;
   onView: (document: Document) => void;
   isUploading: boolean;
@@ -35,14 +35,18 @@ export function DocumentManager({ documents, onUpload, onDelete, onView, isUploa
   const storageBucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
 
-  const handleUploadClick = async () => {
-    if (fileInputRef.current?.files && fileInputRef.current.files.length > 0) {
-      await onUpload(fileInputRef.current.files);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    await onUpload(event.target.files);
+    // Reset file input so the same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
   };
+
 
   return (
     <>
@@ -93,25 +97,23 @@ export function DocumentManager({ documents, onUpload, onDelete, onView, isUploa
               </AlertDescription>
             </Alert>
           )}
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 space-y-2">
-              <label htmlFor="file-upload" className="sr-only">Choose files</label>
-              <Input
-                id="file-upload"
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="cursor-pointer file:text-primary file:font-semibold"
-                disabled={isUploading || isCollaborator}
-              />
-            </div>
+          <div className="flex">
+            <Input
+              id="file-upload"
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileChange}
+              disabled={isUploading || isCollaborator}
+            />
             <Button onClick={handleUploadClick} disabled={isUploading || isCollaborator}>
               {isUploading ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <UploadCloud className="mr-2 h-4 w-4" />
               )}
-              Upload
+              Upload Documents
             </Button>
           </div>
           

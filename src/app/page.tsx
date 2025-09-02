@@ -1449,7 +1449,8 @@ export default function Home() {
   }, [activeChecklist, db, user, storage, getContextDocumentsForAi, toast, handleAiError, settings]);
 
 
-  const handleUploadDocuments = useCallback(async (files: FileList) => {
+  const handleUploadDocuments = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
     if (!activeChecklist || !db || !storage || !auth) {
         toast({ title: "Error", description: "No active checklist selected or storage not configured.", variant: "destructive" });
         return;
