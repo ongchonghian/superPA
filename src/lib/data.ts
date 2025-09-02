@@ -5,26 +5,26 @@ export const PRIORITIES = ['High', 'Medium', 'Low'] as const;
 export const STATUSES = ['complete', 'in progress', 'pending'] as const;
 
 export const GEMINI_MODELS = [
-  'googleai/gemini-1.5-pro-latest',
-  'googleai/gemini-1.5-flash-latest',
-  'googleai/gemini-2.5-flash-preview',
+  'gemini-1.5-pro-latest',
+  'gemini-1.5-flash-latest',
+  'gemini-2.5-flash',
 ] as const;
 
 
 export const GEMINI_MODEL_CONFIGS: Record<GeminiModel, { maxInput: number; maxOutput: number; defaultInput: number; defaultOutput: number; }> = {
-  'googleai/gemini-1.5-pro-latest': {
+  'gemini-1.5-pro-latest': {
     maxInput: 1048576,
     maxOutput: 8192,
     defaultInput: 262144,
     defaultOutput: 2048,
   },
-  'googleai/gemini-1.5-flash-latest': {
+  'gemini-1.5-flash-latest': {
     maxInput: 1048576,
     maxOutput: 8192,
     defaultInput: 131072,
     defaultOutput: 2048,
   },
-  'googleai/gemini-2.5-flash-preview': {
+  'gemini-2.5-flash': {
     maxInput: 1048576,
     maxOutput: 8192,
     defaultInput: 131072,

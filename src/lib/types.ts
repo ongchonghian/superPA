@@ -1,5 +1,4 @@
 
-
 import {PRIORITIES, STATUSES, GEMINI_MODELS} from './data';
 
 export type TaskStatus = (typeof STATUSES)[number];
