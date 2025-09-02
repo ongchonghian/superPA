@@ -333,7 +333,19 @@ export default function Home() {
     return () => unsubscribe();
   }, [toast, authInitialized, user]);
 
-  // Effect to subscribe to the currently active checklist for real-time updates
+  const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
+    if (!db) return;
+    const { id, ...data } = updatedChecklist;
+    const checklistRef = doc(db, 'checklists', id);
+    try {
+      await updateDoc(checklistRef, data);
+    } catch (error) {
+      console.error("Error updating checklist: ", error);
+      toast({ title: "Error", description: "Failed to save changes.", variant: "destructive" });
+    }
+  }, [toast]);
+
+  // Effect to subscribe to the currently active checklist for real-time updates and cleanup stale tasks
   useEffect(() => {
     if (!activeChecklistId || !db) {
       setActiveChecklist(null);
@@ -344,12 +356,50 @@ export default function Home() {
     }
 
     setIsLoading(true);
-    const unsubscribe = onSnapshot(doc(db, 'checklists', activeChecklistId), (doc) => {
-      if (doc.exists()) {
-        const newChecklist = { id: doc.id, ...doc.data() } as Checklist;
-        setActiveChecklist(newChecklist);
+    const unsubscribe = onSnapshot(doc(db, 'checklists', activeChecklistId), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const newChecklist = { id: docSnapshot.id, ...docSnapshot.data() } as Checklist;
+        
+        // Check for stale running tasks
+        let wasModified = false;
+        const now = new Date().getTime();
+        const thirtyMinutesAgo = now - (30 * 60 * 1000);
+        
+        const cleanedTasks = newChecklist.tasks.map(task => {
+          let taskModified = false;
+          const cleanedRemarks = task.remarks.map(remark => {
+            if (remark.text.startsWith('[ai-todo|running]')) {
+              const remarkTime = new Date(remark.timestamp).getTime();
+              if (remarkTime < thirtyMinutesAgo) {
+                taskModified = true;
+                wasModified = true;
+                return { ...remark, text: remark.text.replace('[ai-todo|running]', '[ai-todo|pending]') };
+              }
+            }
+            return remark;
+          });
+
+          if (taskModified) {
+            const systemRemark: Remark = {
+              id: `rem_reset_${Date.now()}_${Math.random()}`,
+              text: 'AI to-do was stuck in a running state and has been reset automatically.',
+              userId: 'system',
+              timestamp: new Date().toISOString(),
+            };
+            return { ...task, remarks: [...cleanedRemarks, systemRemark] };
+          }
+          return task;
+        });
+
+        if (wasModified) {
+          console.log("Detected and reset stale running AI to-dos.");
+          handleUpdateChecklist({ id: newChecklist.id, tasks: cleanedTasks });
+          // The snapshot listener will fire again with the updated data, so we don't set state here.
+        } else {
+          setActiveChecklist(newChecklist);
+        }
+
       } else {
-        // This can happen if the active checklist is deleted
         setActiveChecklist(null);
         setActiveChecklistId(null);
       }
@@ -361,7 +411,7 @@ export default function Home() {
     });
 
     return () => unsubscribe();
-  }, [activeChecklistId, toast, authInitialized]);
+  }, [activeChecklistId, toast, authInitialized, handleUpdateChecklist]);
 
     // Effect to detect new reports and create notifications using localStorage
     useEffect(() => {
@@ -517,18 +567,6 @@ export default function Home() {
         toast({ title, description, variant: "destructive" });
     }
   };
-
-  const handleUpdateChecklist = useCallback(async (updatedChecklist: Partial<Checklist> & { id: string }) => {
-    if (!db) return;
-    const { id, ...data } = updatedChecklist;
-    const checklistRef = doc(db, 'checklists', id);
-    try {
-      await updateDoc(checklistRef, data);
-    } catch (error) {
-      console.error("Error updating checklist: ", error);
-      toast({ title: "Error", description: "Failed to save changes.", variant: "destructive" });
-    }
-  }, [toast]);
 
   const findChecklistByName = useCallback(async (name: string): Promise<{ id: string; name: string } | null> => {
     if (!db || !user) return null;
@@ -1142,7 +1180,7 @@ export default function Home() {
     
     const newRemark: Remark = {
         id: `rem_${Date.now()}_${Math.random()}`,
-        text: warningToAdd.warning,
+        text: `Capability Warning: ${warningToAdd.warning}`,
         userId: 'ai_assistant',
         timestamp: new Date().toISOString(),
     };
@@ -1265,7 +1303,8 @@ export default function Home() {
                     id: `rem_res_${Date.now()}`,
                     text: `AI execution complete. [View results](storage://${resultPath})\n\n**Summary:**\n${result.summary}`,
                     userId: 'ai_executor',
-                    timestamp: new Date().toISOString()
+                    timestamp: new Date().toISOString(),
+                    parentId: remark.id, // Nest the result under the original to-do
                 };
                 
                 // Update remark to 'completed' and add result remark
@@ -1291,7 +1330,8 @@ export default function Home() {
                         id: `rem_fail_${Date.now()}`,
                         text: `AI execution failed. Error: ${error.message || 'An unknown error occurred.'}`,
                         userId: 'system',
-                        timestamp: new Date().toISOString()
+                        timestamp: new Date().toISOString(),
+                        parentId: remark.id, // Nest the failure under the original to-do
                     };
                     const updatedRemarks = t.remarks.map(r => r.id === remark.id ? { ...r, text: r.text.replace(statusUpdateRegex, '[ai-todo|failed]') } : r);
                     return { ...t, remarks: [...updatedRemarks, failureReasonRemark] };
@@ -1318,9 +1358,16 @@ export default function Home() {
     }
     const topic = topicMatch[1].trim();
     
+    // Find the original `[ai-todo]` remark that this result belongs to.
+    const originalTodoRemark = taskToUpdate.remarks.find(r => r.id === parentRemark.parentId);
+    if (!originalTodoRemark) {
+        toast({ title: "Error", description: "Could not find the original AI to-do for this action.", variant: "destructive" });
+        return;
+    }
+    
     const childRemark: Remark = {
         id: `rem_child_${Date.now()}_${Math.random()}`,
-        parentId: parentRemark.id,
+        parentId: originalTodoRemark.id, // Nest under the original `[ai-todo]`
         text: `[prompt-execution|pending] Execute the refined prompt to ${topic}`,
         userId: user.uid,
         timestamp: new Date().toISOString(),

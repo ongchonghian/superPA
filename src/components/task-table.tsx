@@ -244,12 +244,25 @@ const RemarkDisplay = ({ remark, task, onRunRefinedPrompt, onExecuteAiTodo, isTa
     const promptGenSummaryRegex = /Generated a refined prompt for: (.*)/s;
     const promptGenMatch = summary.match(promptGenSummaryRegex);
 
+    const resultBgColor = promptGenMatch 
+        ? 'bg-purple-50 dark:bg-purple-900/20'
+        : 'bg-green-50 dark:bg-green-900/20';
+    const resultBorderColor = promptGenMatch
+        ? 'border-purple-200 dark:border-purple-800'
+        : 'border-green-200 dark:border-green-800';
+    const resultIconColor = promptGenMatch
+        ? 'text-purple-600 dark:text-purple-400'
+        : 'text-green-600 dark:text-green-400';
+    const resultHeaderColor = promptGenMatch
+        ? 'text-purple-700 dark:text-purple-400'
+        : 'text-green-700 dark:text-green-400';
+
     return (
-      <div id={`remark-${id}`} className="p-2 mt-1 rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20">
+      <div id={`remark-${id}`} className={`p-2 mt-1 rounded-lg border ${resultBorderColor} ${resultBgColor}`}>
         <div className="flex items-start gap-2.5">
-          <CheckCircle2 className="h-4 w-4 mt-0.5 text-green-600 dark:text-green-400 flex-shrink-0" />
+          <CheckCircle2 className={`h-4 w-4 mt-0.5 ${resultIconColor} flex-shrink-0`} />
           <div className="flex-1">
-            <h4 className="text-xs font-semibold tracking-wider uppercase text-green-700 dark:text-green-400">AI Execution Complete</h4>
+            <h4 className={`text-xs font-semibold tracking-wider uppercase ${resultHeaderColor}`}>AI Execution Complete</h4>
             {summary && <p className="text-sm text-foreground/90 mt-1 mb-2">{summary}</p>}
             <div className="flex items-center gap-2 flex-wrap mt-2">
                 <Button variant="link" className="p-0 h-auto text-sm font-medium text-primary hover:underline" onClick={handleViewReport}>
@@ -640,7 +653,7 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                                 </div>
                                 <div className="mt-4 space-y-3">
                                     {flattenedRemarks.map(({ remark, level }) => (
-                                    <div key={remark.id} className="flex items-start gap-2.5" style={{ paddingLeft: `${level * 1.5}rem` }}>
+                                    <div key={remark.id} id={`remark-${remark.id}`} className="flex items-start gap-2.5" style={{ paddingLeft: `${level * 1.5}rem` }}>
                                         <Avatar className="h-6 w-6 border text-xs">
                                             <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
                                         </Avatar>
