@@ -479,8 +479,13 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                         addChildrenToFlattenedList(child.id, level + 1);
                     });
                 };
-                addChildrenToFlattenedList('root', 0);
 
+                const rootRemarks = remarksMap.get('root') || [];
+                rootRemarks.forEach(remark => {
+                    flattenedRemarks.push({ remark: remark, level: 0 });
+                    addChildrenToFlattenedList(remark.id, 1);
+                });
+                
                 return (
                   <TableRow key={task.id} data-state={task.status === 'complete' ? 'completed' : 'pending'}>
                     <TableCell className="p-2 align-top">
@@ -496,8 +501,6 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                       
                       <div className="mt-4 space-y-3">
                         {flattenedRemarks.map(({ remark, level }) => {
-                          const isRunning = runningRemarkIds.includes(remark.id);
-                          
                           return (
                             <div key={remark.id} className="flex items-start gap-2.5" style={{ paddingLeft: `${level * 1.5}rem` }}>
                               <Avatar className="h-6 w-6 border text-xs">
@@ -599,7 +602,11 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                             addChildrenToFlattenedList(child.id, level + 1);
                         });
                     };
-                    addChildrenToFlattenedList('root', 0);
+                    const rootRemarks = remarksMap.get('root') || [];
+                    rootRemarks.forEach(remark => {
+                        flattenedRemarks.push({ remark: remark, level: 0 });
+                        addChildrenToFlattenedList(remark.id, 1);
+                    });
 
                     return (
                         <Card key={task.id} data-state={task.status === 'complete' ? 'completed' : 'pending'}>
@@ -653,7 +660,7 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
                                 </div>
                                 <div className="mt-4 space-y-3">
                                     {flattenedRemarks.map(({ remark, level }) => (
-                                    <div key={remark.id} id={`remark-${remark.id}`} className="flex items-start gap-2.5" style={{ paddingLeft: `${level * 1.5}rem` }}>
+                                    <div key={remark.id} id={`remark-mobile-${remark.id}`} className="flex items-start gap-2.5" style={{ paddingLeft: `${level * 1.5}rem` }}>
                                         <Avatar className="h-6 w-6 border text-xs">
                                             <AvatarFallback>{remark.userId.substring(0, 2).toUpperCase()}</AvatarFallback>
                                         </Avatar>
@@ -700,5 +707,3 @@ export function TaskTable({ checklist, onUpdate, onExecuteAiTodo, runningRemarkI
     </div>
   );
 }
-
-    

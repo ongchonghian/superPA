@@ -75,7 +75,12 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
             });
         };
         
-        addChildrenToList('root', 0);
+        const rootRemarks = remarksMap.get('root') || [];
+        rootRemarks.forEach(remark => {
+            list.push({ remark: remark, level: 0 });
+            addChildrenToList(remark.id, 1);
+        });
+        
         return list;
 
     }, [task]);
@@ -89,7 +94,7 @@ export function TaskRemarksSheet({ task, open, onOpenChange, onUpdateTask, onDel
                 }
             }, 100);
         }
-    }, [open, task?.remarks, flattenedRemarks.length]);
+    }, [open, flattenedRemarks.length]);
 
     useEffect(() => {
         // Reset state when the sheet is closed or task changes

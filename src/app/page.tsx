@@ -1779,7 +1779,8 @@ export default function Home() {
           type="file"
           ref={fileInputRef}
           onChange={handleFileSelectedForImport}
-          accept=".md"
+          accept=".md, .txt"
+          multiple
           className="hidden"
         />
         {activeChecklist ? (
