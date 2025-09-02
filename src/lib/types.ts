@@ -58,6 +58,9 @@ export interface Document {
   storagePath: string; // Path to the file in Firebase Storage
   createdAt: string; // ISO string for Firestore compatibility
   mimeType: string; // The MIME type of the file
+  sourceUrl?: string; // The original URL if sourced from the web
+  status?: 'processing' | 'complete' | 'failed'; // Status for web-sourced documents
+  error?: string; // Error message if processing failed
 }
 
 export interface Notification {

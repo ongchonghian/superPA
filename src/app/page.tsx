@@ -39,6 +39,7 @@ import { ChecklistAiSuggestionDialog } from '@/components/checklist-ai-suggestio
 import type { SuggestChecklistNextStepsOutput, ChecklistSuggestion, InformationRequest, CapabilityWarning } from '@/ai/flows/suggest-checklist-next-steps';
 import { suggestChecklistNextSteps } from '@/ai/flows/suggest-checklist-next-steps';
 import { executeAiTodo } from '@/ai/flows/execute-ai-todo';
+import { processUrl } from '@/ai/flows/process-url';
 import { TaskDialog } from '@/components/task-dialog';
 import { TaskRemarksSheet } from '@/components/task-remarks-sheet';
 import { DocumentManager } from '@/components/document-manager';
@@ -501,7 +502,7 @@ export default function Home() {
     return () => unsubscribe();
   }, [activeChecklist, toast]);
   
-  const handleViewContent = useCallback(async (path: string) => {
+  const handleViewContent = useCallback(async (docToView: Document) => {
     if (!storage) return;
 
     setIsReportLoading(true);
@@ -509,7 +510,7 @@ export default function Home() {
     setReportContent(''); // Clear previous content
 
     try {
-      const fileRef = storageRef(storage, path);
+      const fileRef = storageRef(storage, docToView.storagePath);
       const fileBytes = await getBytes(fileRef);
       const decoder = new TextDecoder('utf-8');
       const markdownContent = decoder.decode(fileBytes);
@@ -538,7 +539,9 @@ export default function Home() {
     const handleViewReport = async (event: Event) => {
       const customEvent = event as CustomEvent<string>;
       const storagePath = customEvent.detail;
-      await handleViewContent(storagePath);
+      // This is a bit of a hack. We don't have the full Document object here,
+      // so we create a partial one. This is sufficient for handleViewContent.
+      await handleViewContent({ storagePath } as Document);
     };
 
     window.addEventListener('view-report', handleViewReport);
@@ -1497,6 +1500,7 @@ export default function Home() {
                 storagePath: path,
                 createdAt: new Date().toISOString(),
                 mimeType: mimeType,
+                status: 'complete',
             });
 
             // Associate document with checklist
@@ -1529,6 +1533,77 @@ export default function Home() {
     }
   }, [activeChecklist, toast, db, storage, auth]);
 
+  const handleAddUrl = useCallback(async (url: string) => {
+    if (!activeChecklist || !db || !storage) {
+      toast({ title: "Error", description: "Cannot add URL: checklist or services not ready.", variant: "destructive" });
+      return;
+    }
+
+    let urlObj;
+    try {
+      urlObj = new URL(url);
+    } catch (e) {
+      toast({ title: "Invalid URL", description: "Please enter a valid URL.", variant: "destructive" });
+      return;
+    }
+
+    const docId = `doc_url_${Date.now()}`;
+    const fileName = `Analysis of ${urlObj.hostname}.md`;
+    const newDocRef = doc(db, 'documents', docId);
+    const checklistRef = doc(db, 'checklists', activeChecklist.id);
+    
+    // Create initial document record in "processing" state
+    const newDocData: Omit<Document, 'id'> = {
+      checklistId: activeChecklist.id,
+      fileName: fileName,
+      storagePath: '', // Will be filled in after processing
+      createdAt: new Date().toISOString(),
+      mimeType: 'text/markdown',
+      sourceUrl: url,
+      status: 'processing',
+    };
+    
+    const batch = writeBatch(db);
+    batch.set(newDocRef, newDocData);
+    batch.update(checklistRef, { documentIds: arrayUnion(docId) });
+    await batch.commit();
+
+    toast({ title: "Processing URL", description: "The AI is now analyzing the URL content." });
+
+    // Asynchronously call the AI flow
+    try {
+      const result = await processUrl({ 
+        url,
+        apiKey: settings.apiKey,
+        model: settings.model as any,
+      });
+
+      const markdownBlob = new Blob([result.resultMarkdown], { type: 'text/markdown;charset=utf-8' });
+      const resultPath = `checklists/${activeChecklist.id}/url_analysis/${docId}.md`;
+      const resultRef = storageRef(storage, resultPath);
+      await uploadBytes(resultRef, markdownBlob);
+      
+      // Update document to 'complete' with the storage path
+      await updateDoc(newDocRef, {
+        storagePath: resultPath,
+        status: 'complete',
+      });
+
+    } catch (error: any) {
+      console.error("Error processing URL:", error);
+      const errorMessage = error.message || 'An unknown error occurred.';
+      
+      // Update document to 'failed' with the error message
+      await updateDoc(newDocRef, {
+        status: 'failed',
+        error: errorMessage,
+      });
+
+      handleAiError(error);
+    }
+
+  }, [activeChecklist, db, storage, toast, settings, handleAiError]);
+
   const handleDeleteDocument = useCallback(async (documentId: string) => {
     if (!activeChecklist || !db || !storage) {
         toast({ title: "Error", description: "Cannot delete document: no active checklist.", variant: "destructive" });
@@ -1554,12 +1629,14 @@ export default function Home() {
     }
 
     try {
+      if (docToDelete.storagePath) {
         const fileRef = storageRef(storage, docToDelete.storagePath);
         await deleteObject(fileRef).catch(error => {
             if (error.code !== 'storage/object-not-found') {
                 throw error;
             }
         });
+      }
     } catch (error: any) {
         console.error("Error deleting file from Storage:", error);
         toast({ title: "Storage Error", description: "Could not delete file. Check storage permissions.", variant: "destructive" });
@@ -1775,14 +1852,6 @@ export default function Home() {
         executionQueueSize={executionQueue.length}
       />
       <main className="p-4 sm:p-6 lg:p-8">
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileSelectedForImport}
-          accept=".md, .txt"
-          multiple
-          className="hidden"
-        />
         {activeChecklist ? (
           <>
             <DocumentManager 
@@ -1791,7 +1860,8 @@ export default function Home() {
               isUploading={isUploading}
               storageCorsError={storageCorsError}
               onDelete={handleDeleteDocument}
-              onView={(doc) => handleViewContent(doc.storagePath)}
+              onView={handleViewContent}
+              onAddUrl={handleAddUrl}
               isCollaborator={!isOwner}
             />
             <TaskTable
