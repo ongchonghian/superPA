@@ -7,7 +7,7 @@
  * This flow is designed to simulate an AI reading and analyzing the content of a
  * webpage. Since the AI cannot directly access live URLs, this flow relies on the
  * calling environment to fetch the content and provide it. The prompt is structured
- * to handle this pre-fetched content.
+ to handle this pre-fetched content.
  *
  * - processUrl - A function that takes a URL and its content, and returns a Markdown summary.
  * - ProcessUrlInput - The input type for the processUrl function.
@@ -134,10 +134,9 @@ Execute the full analysis and generate the comprehensive report for the user-pro
       
       const {output} = await prompt(flowInput);
       
-      // Ensure the output is wrapped in the resultMarkdown object
-      return {
-        resultMarkdown: output as any,
-      };
+      // The output from the prompt is already in the correct format.
+      // Directly return it without extra wrapping.
+      return output!;
     }
   );
 
