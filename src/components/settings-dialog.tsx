@@ -93,7 +93,7 @@ export function SettingsDialog({
                 <Label htmlFor="model">Gemini Model</Label>
                 <Select
                   value={settings.model}
-                  onValueChange={(value) => setSettings({ ...settings, model: value })}
+                  onValueChange={(value) => setSettings({ ...settings, model: value, maxInputTokens: undefined, maxOutputTokens: undefined })}
                 >
                   <SelectTrigger id="model">
                     <SelectValue />
@@ -101,7 +101,7 @@ export function SettingsDialog({
                   <SelectContent>
                     {GEMINI_MODELS.map((model) => (
                       <SelectItem key={model} value={model}>
-                        {model}
+                        {model.replace('googleai/', '').replace('-latest', ' (Latest)').replace('-preview', ' (Preview)')}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -136,7 +136,7 @@ export function SettingsDialog({
                     <Info className="h-4 w-4" />
                     <AlertTitle>Model Token Guidance</AlertTitle>
                     <AlertDescription>
-                        For <strong>{settings.model}</strong>:<br/>
+                        For <strong>{settings.model.replace('googleai/','')}</strong>:<br/>
                         - Max Input: {selectedModelConfig.maxInput.toLocaleString()}<br/>
                         - Max Output: {selectedModelConfig.maxOutput.toLocaleString()}<br/>
                         - Leave fields blank to use model defaults (Input: {selectedModelConfig.defaultInput.toLocaleString()}, Output: {selectedModelConfig.defaultOutput.toLocaleString()}).

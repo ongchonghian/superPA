@@ -7,6 +7,7 @@ export const STATUSES = ['complete', 'in progress', 'pending'] as const;
 export const GEMINI_MODELS = [
   'googleai/gemini-1.5-pro-latest',
   'googleai/gemini-1.5-flash-latest',
+  'googleai/gemini-2.5-flash-preview',
 ] as const;
 
 
@@ -22,6 +23,12 @@ export const GEMINI_MODEL_CONFIGS: Record<GeminiModel, { maxInput: number; maxOu
     maxOutput: 8192,
     defaultInput: 131072,
     defaultOutput: 2048,
+  },
+  'googleai/gemini-2.5-flash-preview': {
+    maxInput: 1048576,
+    maxOutput: 8192,
+    defaultInput: 131072,
+    defaultOutput: 8192,
   },
 };
 
