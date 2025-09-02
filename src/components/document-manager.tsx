@@ -5,9 +5,8 @@
 import React, { useRef, useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { File, Loader2, Terminal, Trash2, UploadCloud, Link, ExternalLink, AlertCircle, Hourglass } from 'lucide-react';
+import { File, Loader2, Terminal, Trash2, UploadCloud, AlertCircle, Hourglass } from 'lucide-react';
 import type { Document } from '@/lib/types';
-import { Input } from './ui/input';
 import { Alert, AlertDescription, AlertTitle } from './ui/alert';
 import {
   AlertDialog,
@@ -26,18 +25,14 @@ interface DocumentManagerProps {
   onUpload: (files: FileList | null) => Promise<void>;
   onDelete: (documentId: string) => Promise<void>;
   onView: (document: Document) => void;
-  onAddUrl: (url: string) => Promise<void>;
   isUploading: boolean;
   storageCorsError: boolean;
   isCollaborator: boolean;
 }
 
-export function DocumentManager({ documents, onUpload, onDelete, onView, onAddUrl, isUploading, storageCorsError, isCollaborator }: DocumentManagerProps) {
+export function DocumentManager({ documents, onUpload, onDelete, onView, isUploading, storageCorsError, isCollaborator }: DocumentManagerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const storageBucketName = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET;
   const [docToDelete, setDocToDelete] = useState<Document | null>(null);
-  const [urlToAdd, setUrlToAdd] = useState('');
-  const [isAddingUrl, setIsAddingUrl] = useState(false);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -50,25 +45,13 @@ export function DocumentManager({ documents, onUpload, onDelete, onView, onAddUr
     }
   };
 
-  const handleAddUrl = async () => {
-    if (!urlToAdd) return;
-    setIsAddingUrl(true);
-    try {
-      await onAddUrl(urlToAdd);
-      setUrlToAdd('');
-    } finally {
-      setIsAddingUrl(false);
-    }
-  };
-
-
   return (
     <>
       <Card className="mb-6 no-print">
         <CardHeader>
           <CardTitle>Context Documents</CardTitle>
           <CardDescription>
-            Provide context for the AI by uploading documents or adding a URL for the AI to read and analyze.
+            Provide context for the AI by uploading relevant project documents.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -82,10 +65,7 @@ export function DocumentManager({ documents, onUpload, onDelete, onView, onAddUr
             </Alert>
           )}
 
-          <div className="grid md:grid-cols-2 gap-6">
-            {/* File Upload Section */}
-            <div className="space-y-3">
-              <h3 className="font-medium text-sm">Upload Files</h3>
+          <div className="space-y-3">
               <Input
                 id="file-upload"
                 ref={fileInputRef}
@@ -95,7 +75,7 @@ export function DocumentManager({ documents, onUpload, onDelete, onView, onAddUr
                 onChange={handleFileChange}
                 disabled={isUploading || isCollaborator}
               />
-              <Button onClick={handleUploadClick} disabled={isUploading || isCollaborator} className="w-full">
+              <Button onClick={handleUploadClick} disabled={isUploading || isCollaborator} className="w-full sm:w-auto">
                 {isUploading ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
@@ -104,31 +84,6 @@ export function DocumentManager({ documents, onUpload, onDelete, onView, onAddUr
                 Upload from Computer
               </Button>
             </div>
-            
-            {/* URL Input Section */}
-            <div className="space-y-3">
-              <h3 className="font-medium text-sm">Add from URL</h3>
-              <div className="flex gap-2">
-                <Input
-                  id="url-input"
-                  type="url"
-                  placeholder="https://example.com/about-us"
-                  value={urlToAdd}
-                  onChange={(e) => setUrlToAdd(e.target.value)}
-                  disabled={isAddingUrl || isCollaborator}
-                  onKeyDown={(e) => e.key === 'Enter' && handleAddUrl()}
-                />
-                <Button onClick={handleAddUrl} disabled={isAddingUrl || isCollaborator || !urlToAdd}>
-                  {isAddingUrl ? (
-                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                     <Link className="mr-2 h-4 w-4" />
-                  )}
-                  Add URL
-                </Button>
-              </div>
-            </div>
-          </div>
           
           {documents.length > 0 && (
             <div className="mt-6 space-y-3">
@@ -159,12 +114,6 @@ export function DocumentManager({ documents, onUpload, onDelete, onView, onAddUr
                               >
                                 {doc.fileName}
                               </button>
-                          )}
-                          
-                          {doc.sourceUrl && (
-                            <a href={doc.sourceUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary w-fit">
-                                Source <ExternalLink className="h-3 w-3" />
-                            </a>
                           )}
 
                           {doc.status === 'failed' && (
