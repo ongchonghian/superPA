@@ -1,0 +1,51 @@
+# UI/UX Workflow Mode – Custom Rules
+
+## Mission Statement
+Guide the end-to-end UI/UX design process from initial discovery to code hand-off, ensuring every design decision is user-centered, accessible, and aligned with our design system.
+
+## Phase 1: Discovery & Research
+- **Doc Probe:** Begin by reviewing `docs/KEY_DOCS.yaml` for the **ui_ux** domain. Read any listed key documents (e.g. UX research reports, user personas, style guidelines). If critical research is missing, pause and request the human to provide context or create those documents.
+- **Output (DesignDiscovery.md):** Summarize the problem background, user needs, and personas. Identify user pain points or goals from the research. This sets the context for design.
+
+## Phase 2: Evaluation (Heuristics & A11y)
+- **Heuristic Evaluation:** Analyze the existing UI or proposed concept against **Nielsen’s 10 Usability Heuristics**:contentReference[oaicite:21]{index=21}. Note any violations (e.g. inconsistency, poor error handling) and suggest improvements.  
+- **Accessibility Audit:** Check the design against **WCAG 2.1 AA** criteria. Ensure **contrast ≥ 4.5:1, keyboard navigation, focus visibility, alt text** for images, etc. List any accessibility issues discovered and how to fix them (e.g. increase text contrast, add ARIA labels).
+- These findings will be documented in the Design Plan to inform the new design.
+
+## Phase 3: Design Planning
+- **Information Architecture:** Propose a clear structure for the UI (screens, navigation hierarchy). Use diagrams or lists to outline the user flow with attention to **entry points and return paths** (no dead-ends):contentReference[oaicite:22]{index=22}.
+- **Wireframes:** Draft low-fidelity wireframes for key screens or components. **Use design tokens** for any stylistic values (colors, spacing, typography) – *no hardcoded values*:contentReference[oaicite:23]{index=23}. Indicate component placements and any interactive elements.
+- **Design System Reuse:** Wherever possible, reference existing components from our library (check `COMPONENT_REGISTRY.md`). For example, if a modal or button style exists, use that rather than creating a new one. Maintain **consistency and standards** in UI controls:contentReference[oaicite:24]{index=24}.
+- **Accessibility Considerations:** For each design element, ensure it meets accessibility needs. Specify keyboard focus order, ARIA roles or labels for controls, alt text for media, and include designs for high-contrast or reduced-motion modes if applicable:contentReference[oaicite:25]{index=25}.
+- **Usability Testing Plan:** Define at least 2-3 critical test scenarios (e.g. “Complete checkout flow” or “Find and edit profile info”). For each, outline the task, success criteria, and what to measure (time, errors, feedback). This will help validate the design.
+- **Output (DesignPlan.md):** Compile the above into a comprehensive design specification. Use clear headings (Overview, User Flows, Wireframes, Accessibility, Testing Plan, etc.) so stakeholders can easily review. Include images or ASCII diagrams for flows if helpful (note: as this is Markdown, describe visuals as needed).
+
+## Phase 4: Design Decisions Log
+- Throughout phases 1–3, maintain a log of key decisions in **DesignDecisionsLog.md**. Each entry should include what decision was made, the options considered, and the rationale. For example: “Chose infinite scroll over pagination for feed – rationale: better continuous experience, matches user expectation from social apps.”
+- Also log any assumptions or questions for the product team. This creates a transparent record for later review.
+
+## Phase 5: Implementation Prep (Code Template)
+- **Component Prototype:** Create a skeleton React component (TSX/JSX) that realizes one of the core UI pieces from the design (or a small set of components). For example, if designing a new Dashboard screen, provide a `Dashboard.tsx` with layout structure and placeholder elements.
+- Use the project’s framework and conventions (e.g., if using Next.js, use appropriate `<Head>` for titles, etc.). **Import design tokens or theming context** as needed to demonstrate applying styles (for instance, use classes or styled-components that reference tokens, not raw CSS values).
+- The code should be **functional but not fully implemented** – it's a starting point for developers. Include comments to explain any tricky parts or to-do items (e.g. “// TODO: Replace placeholder data with API call”).
+- **No external API calls or complex logic** – keep it focused on the UI structure and styling. Ensure the component is accessible (proper semantic HTML, ARIA attributes if needed, focus management for modals, etc.).
+- **Output (DesignPrototype.tsx):** Save this file in `.kilocode/specs/`. It won’t be part of production code yet, but serves as a reference. (Developers might later move it to `src/components/` when implementing.)
+
+## Human-in-the-Loop Checkpoints
+- After drafting the design plan (Phase 3), present an **[ACTION REQUIRED]** to the human reviewer with a checklist of review items: e.g. “Please review the Design Plan for: (1) completeness of user flows, (2) any usability concerns, (3) any business requirement mismatches, (4) accessibility coverage.” Wait for approval or feedback.
+- If multiple design options are available (e.g. two different layouts or color themes), present an [ACTION REQUIRED] with the options (A, B, C) along with a brief rubric (e.g. option A = more conventional, option B = more creative):contentReference[oaicite:26]{index=26}. Incorporate the user’s choice and rationale into the design docs and decisions log.
+- Before generating the code template, confirm with the user if there are any coding standards or preferences (such as “use Chakra UI components” or “functional components only”) – adapt the prototype accordingly.
+
+## Mode Output & Trailer
+- The mode writes all outputs to **`.kilocode/specs/`** as follows:
+  - *DesignDiscovery.md* – Research summary and personas.
+  - *DesignPlan.md* – Detailed UX design specification (with evaluation results integrated).
+  - *DesignDecisionsLog.md* – Log of decisions and assumptions.
+  - *DesignPrototype.tsx* – Code template demonstrating the UI implementation.
+- After writing these, the mode appends a **HOP v2 trailer** to its final message with:
+  - `DOC_PTR`: list of docs consulted (e.g. ["docs/ui-ux/RESEARCH.md", "docs/visual/STYLE_GUIDE.md"]).
+  - `DOC_GAPS`: any needed docs that do not exist (e.g. ["docs/ui-ux/PersonaDefinitions.md"] if we wished such existed).
+  - `PLAN_PTR`: the path to DesignPlan.md (as the main spec output).
+  - `CHG_PTR`: list of files created or modified in this process (the four spec files above).
+- This structured trailer will help QA and Orchestrator follow-up. QA will verify that all these outputs meet the acceptance criteria (no missing DOC_PTR, all design choices logged, etc.), and the Orchestrator can update `FILELIST.md` with the new files if needed.
+

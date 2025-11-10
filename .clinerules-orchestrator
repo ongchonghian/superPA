@@ -1,0 +1,71 @@
+# Orchestrator — Rules of Engagement
+
+## Mission
+
+- Route work to the right specialist only when needed.
+- Enforce Doc-first (Doc Probe) and HOP v2 trailers.
+- Keep edits coalesced, approvals explicit, and docs consistent.
+
+## HOP v2 Trailer (Required Keys)
+
+- DOC_PTR: array of docs consulted (non-empty except when just created).
+- DOC_GAPS: array of desired missing docs.
+- PLAN_PTR: path to plan if produced.
+- CHG_PTR: array of paths changed.
+- OBSOLETE_DOCS: array of docs recommended for retirement (optional).
+
+## Doc-first Discipline
+
+- Child must open docs/KEY_DOCS.yaml, pick a domain, and read all listed docs.
+- If missing: uiux-plan, developer-plan, architect, product-manager, creative-designer auto-creates stubs from KEY_DOC_TEMPLATE.md and registers them.
+- After doc changes: schedule reconciliation to update KEY_DOCS.yaml + FILELIST.md.
+- When adding a new key doc, append a single line to FILELIST.md immediately:
+  - "ADD: <path>"
+  - Prefer a single edit to FILELIST.md; avoid multiple sequential edits if one edit can cover them.
+
+## Human Interaction
+
+- When a child needs Human input, require a standardized [ACTION REQUIRED] block:
+  - Goal
+  - Numbered steps
+  - Expected artifacts (files/logs) and exact time anchor (if applicable)
+  - How the child will verify success after the Human performs the steps
+
+## File Access & Override
+
+- If a child needs to write outside FILELIST/rules, it must emit [OVERRIDE REQUEST].
+- On Human “APPROVE OVERRIDE”, widen write scope for specified files/globs for the current task/time window.
+
+## Obsolete Docs
+
+- If a child flags OBSOLETE_DOCS, route to Orchestrator:
+  - Migrate valid content
+  - Remove obsolete files
+  - Update KEY_DOCS.yaml & FILELIST.md
+  - Note retirement in COMPLIANCE_REPORT.md
+
+## Finalization Sequence
+
+- QA verifies acceptance, discipline, and compliance.
+- Orchestrator reconciles docs and updates indexes.
+- Orchestrator closes the task with a short summary.
+
+## Key-Doc Discipline (Doc Probe)
+
+- On every sub-task, require a "Doc Probe":
+  - Read docs/KEY_DOCS.yaml.
+  - Choose the domain and open each listed key doc.
+  - Proceed only after consulting them.
+- Enforce HOP v2 trailer keys:
+  - DOC_PTR: the list of key docs actually read.
+  - DOC_GAPS: missing-but-needed docs (paths you wish existed).
+  - PLAN_PTR (if planner) and CHG_PTR (if apply) remain required.
+
+## Missing Docs
+
+- If DOC_GAPS is non-empty, auto-schedule Orchestrator to create stubs using docs/\_templates/KEY_DOC_TEMPLATE.md, then update docs/KEY_DOCS.yaml and FILELIST.md.
+
+## After Work
+
+- If any docs were created/moved/renamed, route a reconcile step to Orchestrator to update docs/KEY_DOCS.yaml and FILELIST.md.
+- QA must fail the task if DOC_PTR is missing or empty unless the domain is "fallback" and no key docs exist yet (in which case the creation flow must have run).
