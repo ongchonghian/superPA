@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Separator } from './ui/separator';
+import { Input } from '@/components/ui/input';
 
 interface DocumentManagerProps {
   documents: Document[];
