@@ -1,5 +1,7 @@
 
 
+'use client';
+
 import { initializeApp, getApps, getApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
 import { getAuth, type Auth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
@@ -38,17 +40,36 @@ export const isFirebaseConfigured = missingFirebaseConfigKeys.length === 0;
 
 if (isFirebaseConfigured) {
   try {
-    app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+    // Guard against re-entrant initialization in Next.js dev / React strict mode.
+    // Only initialize when we truly have no apps yet.
+    if (!getApps().length) {
+      app = initializeApp(firebaseConfig);
+    } else {
+      app = getApp();
+    }
+
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
     googleProvider = new GoogleAuthProvider();
-  } catch(e) {
-    console.error("Firebase initialization failed:", e);
+  } catch (e) {
+    console.error(
+      'Firebase initialization failed (this is safe in dev if config is missing/misconfigured):',
+      e,
+    );
+    // Ensure we never leave these as uninitialized TDZ-like bindings.
+    app = null;
+    auth = null;
+    db = null;
+    storage = null;
+    googleProvider = null;
   }
 } else {
-    // Log a helpful message to the developer console.
-    console.log("Firebase configuration is missing or incomplete. The following keys were not found in the environment:", missingFirebaseConfigKeys.join(', '));
+  // Log a helpful message to the developer console without throwing.
+  console.log(
+    'Firebase configuration is missing or incomplete. The following keys were not found in the environment:',
+    missingFirebaseConfigKeys.join(', '),
+  );
 }
 
 export { app, auth, db, storage, googleProvider };

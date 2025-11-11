@@ -72,6 +72,9 @@ interface ChecklistHeaderProps {
   onNotificationClick: (notification: Notification) => void;
   onNotificationsOpen: () => void;
   executionQueueSize: number;
+  onGenerateAiSummary: () => void;
+  showAiSummaryNewBadge: boolean;
+  aiSummaryDisabledReason?: string | null;
 }
 
 export function ChecklistHeader({
@@ -98,6 +101,9 @@ export function ChecklistHeader({
   onNotificationClick,
   onNotificationsOpen,
   executionQueueSize,
+  showAiSummaryNewBadge,
+  aiSummaryDisabledReason,
+  onGenerateAiSummary,
 }: ChecklistHeaderProps) {
   const unreadNotifications = notifications.filter(n => !n.read);
 
@@ -210,6 +216,45 @@ export function ChecklistHeader({
                     <FileArchive className="mr-2 h-4 w-4" />
                     Download All as Zip
                   </DropdownMenuItem>
+                  <TooltipProvider disableHoverableContent>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <DropdownMenuItem
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            if (!hasActiveChecklist || !!aiSummaryDisabledReason) {
+                              return;
+                            }
+                            onGenerateAiSummary();
+                          }}
+                          disabled={!hasActiveChecklist || !!aiSummaryDisabledReason}
+                        >
+                          <span className="flex items-center gap-2">
+                            <WandSparkles className="h-4 w-4 text-muted-foreground" />
+                            <span>Generate AI Summary…</span>
+                          </span>
+                          {showAiSummaryNewBadge && (
+                            <Badge
+                              variant="secondary"
+                              className="ml-auto text-[10px] px-1.5 py-0.5 leading-none"
+                            >
+                              New
+                            </Badge>
+                          )}
+                        </DropdownMenuItem>
+                      </TooltipTrigger>
+                      {!aiSummaryDisabledReason && (
+                        <TooltipContent side="left">
+                          <p>Create an exec-ready status summary with one click.</p>
+                        </TooltipContent>
+                      )}
+                      {aiSummaryDisabledReason && (
+                        <TooltipContent side="left">
+                          <p>{aiSummaryDisabledReason}</p>
+                        </TooltipContent>
+                      )}
+                    </Tooltip>
+                  </TooltipProvider>
                 </DropdownMenuSubContent>
               </DropdownMenuSub>
               {activeChecklistId && isOwner && (

@@ -51,7 +51,7 @@ export interface Invite {
 
 
 export interface Document {
-  id:string;
+  id: string;
   checklistId: string;
   fileName: string;
   storagePath: string; // Path to the file in Firebase Storage
@@ -60,6 +60,62 @@ export interface Document {
   sourceUrl?: string; // The original URL if sourced from the web
   status?: 'processing' | 'complete' | 'failed'; // Status for web-sourced documents
   error?: string; // Error message if processing failed
+}
+
+/**
+ * Report types supported by the system.
+ *
+ * Phase 1:
+ * - 'AI_SUMMARY' for AI-generated project status summaries (see docs/ai-summary-spec.md).
+ *
+ * Designed to be easily extended with additional report types in future phases.
+ */
+export type ReportType = 'AI_SUMMARY';
+
+/**
+ * Shared Report model for persisted, exportable reports.
+ *
+ * Stored in Firestore under the `reports` collection.
+ * `createdAt` and optional `sourceSnapshotRange` timestamps are ISO strings.
+ */
+export interface Report {
+  id: string;
+  projectId: string;
+  type: ReportType;
+  title: string;
+  createdAt: string; // ISO timestamp
+  createdBy: string;
+  contentMarkdown: string;
+  metadata: {
+    filterSignature: string;
+    overallStatus: 'ON_TRACK' | 'AT_RISK' | 'OFF_TRACK' | 'UNKNOWN';
+    wordCount: number;
+    sectionsPresent: {
+      overview: boolean;
+      timeline: boolean;
+      milestones: boolean;
+      risks: boolean;
+      blockers: boolean;
+      nextSteps: boolean;
+    };
+    sourceStats: {
+      taskCount: number;
+      openTaskCount: number;
+      completedTaskCount: number;
+      milestoneCount: number;
+      remarkCount: number;
+      timeWindowDays: number | null;
+    };
+    sourceSnapshotRange?: {
+      from: string | null;
+      to: string | null;
+    };
+    generationConfig: {
+      model: string;
+      maxInputTokens?: number;
+      maxOutputTokens?: number;
+    };
+  };
 }
 
 export interface Notification {

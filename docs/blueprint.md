@@ -1,3 +1,5 @@
+> Note: For the full specification of the "AI-Generated Project Summaries &amp; Status Reports" feature (including UI/UX, architecture, and acceptance criteria), see [`docs/ai-summary-spec.md`](docs/ai-summary-spec.md:1).
+
 # **App Name**: Alpha Release Hub
 
 ## Core Features:

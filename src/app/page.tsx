@@ -59,6 +59,7 @@ import { LoginScreen } from '@/components/login-screen';
 import { ShareChecklistDialog } from '@/components/share-checklist-dialog';
 import { SettingsDialog } from '@/components/settings-dialog';
 import JSZip from 'jszip';
+import { useAiSummary } from '@/hooks/use-ai-summary';
 
 
 export default function Home() {
@@ -93,6 +94,8 @@ export default function Home() {
   const [checklistToDelete, setChecklistToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isReportViewerOpen, setIsReportViewerOpen] = useState(false);
   const [reportContent, setReportContent] = useState('');
+  const [aiSummaryReport, setAiSummaryReport] = useState<import('@/lib/types').Report | null>(null);
+  const [isAiSummaryDialogOpen, setIsAiSummaryDialogOpen] = useState(false);
   const [isReportLoading, setIsReportLoading] = useState(false);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -142,10 +145,52 @@ export default function Home() {
     setIsSettingsDialogOpen(false);
   }, [toast]);
 
-  const isOwner = useMemo(() => {
-    if (!user || !activeChecklist) return false;
-    return activeChecklist.ownerId === user.uid;
-  }, [user, activeChecklist]);
+ const getCurrentFilter = useCallback(() => {
+   // v1: no complex filters wired yet; send empty filter snapshot for stable signature.
+   // This can be extended later to include status/assignee/tag/date filters.
+   return {};
+ }, []);
+
+ const handleAiSummaryReportReady = useCallback((report: import('@/lib/types').Report) => {
+   setAiSummaryReport(report);
+   setIsAiSummaryDialogOpen(true);
+ }, []);
+
+ const {
+   generateAiSummary,
+   showNewBadge,
+   aiSummaryDisabledReasonForProject,
+   incrementMenuOpen,
+ } = useAiSummary({
+   getCurrentFilter,
+   onReportReady: handleAiSummaryReportReady,
+ });
+
+ const activeProjectId = activeChecklistId || activeChecklist?.id || null;
+
+ const isOwner = useMemo(() => {
+   if (!user || !activeChecklist) return false;
+   return activeChecklist.ownerId === user.uid;
+ }, [user, activeChecklist]);
+
+ const aiSummaryDisabledReason = aiSummaryDisabledReasonForProject(
+   activeProjectId,
+   !!activeChecklist,
+   isOwner
+ );
+
+ const handleGenerateAiSummary = useCallback(() => {
+   if (!activeProjectId || !activeChecklist) {
+     toast({
+       title: 'AI summary failed',
+       description: 'No active project selected.',
+       variant: 'destructive',
+     });
+     return;
+   }
+   void generateAiSummary(activeProjectId);
+ }, [activeChecklist, activeProjectId, generateAiSummary, toast]);
+
 
   // If Firebase is not configured statically, show guidance.
   if (!isFirebaseConfigured) {
@@ -1760,7 +1805,10 @@ export default function Home() {
         onSignOut={handleSignOut}
         checklists={checklistMetas}
         activeChecklistId={activeChecklistId}
-        onSwitch={handleSwitchChecklist}
+        onSwitch={(id) => {
+          incrementMenuOpen();
+          handleSwitchChecklist(id);
+        }}
         onAdd={() => setIsNewChecklistDialogOpen(true)}
         onDeleteRequest={handleRequestDeleteChecklist}
         onInitiateImport={handleInitiateImport}
@@ -1779,6 +1827,9 @@ export default function Home() {
         onNotificationClick={handleNotificationClick}
         onNotificationsOpen={handleNotificationsOpen}
         executionQueueSize={executionQueue.length}
+        onGenerateAiSummary={handleGenerateAiSummary}
+        showAiSummaryNewBadge={showNewBadge}
+        aiSummaryDisabledReason={aiSummaryDisabledReason || undefined}
       />
       <main className="p-4 sm:p-6 lg:p-8">
         {activeChecklist ? (
