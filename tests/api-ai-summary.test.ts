@@ -9,7 +9,8 @@
  *   runtime Jest will handle globals (describe/it/expect/jest).
  */
 import { NextRequest } from 'next/server';
-import { POST } from '@/app/api/ai-summary/route';
+// Use relative import so Vitest/Jest running in Node can resolve without Next.js alias config.
+import { POST } from '../src/app/api/ai-summary/route';
 import {
   generateAiProjectSummary,
   AiSummaryProjectNotFoundError,
@@ -26,16 +27,41 @@ import {
 
 jest.mock('@/ai/flows/ai-project-summary');
 jest.mock('@/lib/reports');
+
+// Mock the firebase module to avoid real environment dependencies.
+// Ensure it exposes a db compatible with route usage.
 jest.mock('@/lib/firebase', () => ({
   db: {},
   auth: {},
 }));
+
 jest.mock('@/lib/ai-summary-logs.server', () => ({
   logAiSummaryAuditEvent: jest.fn(),
   trackAiSummaryStarted: jest.fn(),
   trackAiSummaryCompleted: jest.fn(),
   trackAiSummaryAiError: jest.fn(),
 }));
+
+// Mock new auth + authz helpers so the route under test does not require real Firebase Admin.
+// These mocks simulate a valid authenticated session for the happy-path tests.
+jest.mock('@/lib/auth-server', () => {
+  const actual = jest.requireActual('../src/lib/auth-server');
+  return {
+    ...actual,
+    getAuthenticatedUser: jest.fn(async () => ({ uid: 'test-user' })),
+    requireAuthenticatedUser: jest.fn(async () => ({ uid: 'test-user' })),
+    // Explicitly export AuthRequiredError for unauthenticated path tests when needed.
+    AuthRequiredError: actual.AuthRequiredError,
+  };
+});
+
+jest.mock('@/lib/authz', () => {
+  const actual = jest.requireActual('../src/lib/authz');
+  return {
+    ...actual,
+    assertCanGenerateProjectReport: jest.fn(async () => {}),
+  };
+});
 
 // Helper to build a minimal NextRequest-like object for POST handler.
 function buildRequest(body) {
@@ -92,7 +118,7 @@ describe('/api/ai-summary route', () => {
   });
 
   it('maps AiSummaryProjectNotFoundError to 404', async () => {
-    (generateAiProjectSummary as jest.Mock).mockRejectedValueOnce(
+    (generateAiProjectSummary as any).mockRejectedValueOnce(
       new AiSummaryProjectNotFoundError(),
     );
 
@@ -109,7 +135,7 @@ describe('/api/ai-summary route', () => {
   });
 
   it('maps AiSummaryPermissionDeniedError to 403', async () => {
-    (generateAiProjectSummary as jest.Mock).mockRejectedValueOnce(
+    (generateAiProjectSummary as any).mockRejectedValueOnce(
       new AiSummaryPermissionDeniedError(),
     );
 
@@ -126,7 +152,7 @@ describe('/api/ai-summary route', () => {
   });
 
   it('maps AiSummaryGenerationError AI_TIMEOUT to 504 and logs telemetry', async () => {
-    (generateAiProjectSummary as jest.Mock).mockRejectedValueOnce(
+    (generateAiProjectSummary as any).mockRejectedValueOnce(
       new AiSummaryGenerationError('AI_TIMEOUT', 'timeout'),
     );
 
@@ -144,7 +170,7 @@ describe('/api/ai-summary route', () => {
   });
 
   it('maps AiSummaryGenerationError AI_FAILURE to 502 and logs telemetry', async () => {
-    (generateAiProjectSummary as jest.Mock).mockRejectedValueOnce(
+    (generateAiProjectSummary as any).mockRejectedValueOnce(
       new AiSummaryGenerationError('AI_FAILURE', 'failure'),
     );
 
@@ -161,7 +187,23 @@ describe('/api/ai-summary route', () => {
     expect(trackAiSummaryAiError).toHaveBeenCalled();
   });
 
-  it('on successful generation calls generateAiProjectSummary, persists report, and returns expected payload', async () => {
+  it('returns 401 UNAUTHENTICATED when getAuthenticatedUser returns null', async () => {
+    const { getAuthenticatedUser } = require('@/lib/auth-server');
+    (getAuthenticatedUser as any).mockResolvedValueOnce(null);
+
+    const req = buildRequest({
+      projectId: 'p1',
+      filterSignature: '{}',
+      filter: {},
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(401);
+    const data = await res.json();
+    expect(data.error.code).toBe('UNAUTHENTICATED');
+  });
+
+  it('on successful generation calls generateAiProjectSummary, persists report, and returns expected payload for an authenticated user', async () => {
     const mockAiResult = {
       contentMarkdown: '# Summary',
       overallStatus: 'ON_TRACK',
@@ -191,8 +233,8 @@ describe('/api/ai-summary route', () => {
       },
     };
 
-    (generateAiProjectSummary as jest.Mock).mockResolvedValueOnce(mockAiResult);
-    (createReport as jest.Mock).mockImplementationOnce((reportWithoutId) => ({
+    (generateAiProjectSummary as any).mockResolvedValueOnce(mockAiResult);
+    (createReport as any).mockImplementationOnce((reportWithoutId) => ({
       id: 'r1',
       ...reportWithoutId,
     }));

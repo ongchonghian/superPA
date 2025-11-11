@@ -1,5 +1,40 @@
 # Settings to manage and configure a Firebase App Hosting backend.
 # https://firebase.google.com/docs/app-hosting/configure
+#
+# Environment & secrets model (authoritative reference for production):
+# - All sensitive values are read exclusively from process.env at runtime.
+# - Secret material must NOT be committed to source control or .env files.
+# - In production, configure Firebase / Google Cloud (e.g. App Hosting, Cloud Run)
+#   to mount secrets into these environment variables, typically via Secret Manager.
+#
+# Required server-only env vars (backed by Secret Manager):
+# - FIREBASE_PRIVATE_KEY          -> service account private key (with '\n' newlines encoded if needed)
+# - FIREBASE_CLIENT_EMAIL         -> service account client email
+# - FIREBASE_PROJECT_ID           -> Firebase / GCP project ID
+# - GEMINI_API_KEY                -> API key for Google AI / Gemini
+#
+# Required public (client) env vars (non-secret but env-managed):
+# - NEXT_PUBLIC_FIREBASE_API_KEY
+# - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+# - NEXT_PUBLIC_FIREBASE_PROJECT_ID
+# - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+# - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+# - NEXT_PUBLIC_FIREBASE_APP_ID
+#
+# Example (conceptual) Secret Manager -> env var mappings for App Hosting:
+# - secret: firebase-service-account-private-key   -> FIREBASE_PRIVATE_KEY
+# - secret: firebase-service-account-client-email  -> FIREBASE_CLIENT_EMAIL
+# - secret: firebase-project-id                    -> FIREBASE_PROJECT_ID
+# - secret: gemini-api-key                         -> GEMINI_API_KEY
+# - secret or runtime config: firebase-api-key     -> NEXT_PUBLIC_FIREBASE_API_KEY
+# - secret or runtime config: firebase-auth-domain -> NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+# - secret or runtime config: firebase-project-id  -> NEXT_PUBLIC_FIREBASE_PROJECT_ID
+# - secret or runtime config: firebase-storage-bucket        -> NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+# - secret or runtime config: firebase-messaging-sender-id   -> NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+# - secret or runtime config: firebase-app-id                -> NEXT_PUBLIC_FIREBASE_APP_ID
+#
+# Note: Do NOT import or call Secret Manager SDKs in application code.
+#       The hosting/deployment platform is responsible for injecting env vars.
 
 runConfig:
   # Increase this value if you'd like to automatically spin up

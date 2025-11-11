@@ -2,7 +2,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { auth, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
+import { getAuthenticatedUser, jsonAuthError, AuthRequiredError } from '@/lib/auth-server';
+import { assertCanGenerateProjectReport, AuthzError } from '@/lib/authz';
 import { collection, getDocs, orderBy, query, where, limit } from 'firebase/firestore';
 import { createReport } from '@/lib/reports';
 import type { Report } from '@/lib/types';
@@ -163,10 +165,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // 2. AuthN: derive authenticated user.
-    userId = await getAuthenticatedUserId(req);
+    // 2. AuthN: derive authenticated user from session cookie / bearer token.
+    // Concrete root cause note:
+    // In production, 401s were observed when the Firebase session cookie was not
+    // actually sent with /api/ai-summary requests. This typically happened due to:
+    // - Missing or mis-scoped session cookie (wrong domain/path or SameSite) from the login route.
+    // - Environment mismatches causing verifySessionCookie/verifyIdToken to fail silently.
+    // The login route now sets a host-scoped, SameSite=Lax, Secure-in-prod cookie at path "/",
+    // aligned with this handler's expectations so authenticated users retain a valid session.
+    const user = await getAuthenticatedUser(req);
 
-    if (!userId) {
+    if (!user) {
       await logAiSummaryAuditEvent({
         userId: null,
         projectId,
@@ -174,7 +183,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         outcome: 'AUTH_ERROR',
         errorCode: 'UNAUTHENTICATED',
       });
-      return jsonError(
+      return jsonAuthError(
         401,
         'UNAUTHENTICATED',
         'Authentication required to generate AI summaries.',
@@ -182,38 +191,39 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // 3. AuthZ / project visibility checks.
-    const project = await loadProjectForAccessCheck(bodyProjectId);
-    if (!project) {
-      // Intentionally 404 to avoid leaking existence.
-      await logAiSummaryAuditEvent({
-        userId,
-        projectId,
-        filterSignature,
-        outcome: 'NOT_FOUND',
-        errorCode: 'PROJECT_NOT_FOUND',
-      });
-      return jsonError(
-        404,
-        'PROJECT_NOT_FOUND',
-        'Project not found or unavailable.',
-        false,
-      );
-    }
+    userId = user.uid;
 
-    const hasPermission = userHasReportPermission(userId, project);
-    if (!hasPermission) {
+    // 3. AuthZ / project visibility checks (centralized).
+    try {
+      await assertCanGenerateProjectReport(userId, bodyProjectId);
+    } catch (err) {
+      if (err instanceof AuthzError) {
+        await logAiSummaryAuditEvent({
+          userId,
+          projectId,
+          filterSignature,
+          outcome: 'PERMISSION_DENIED',
+          errorCode: 'PERMISSION_DENIED',
+        });
+        return jsonError(
+          403,
+          'PERMISSION_DENIED',
+          err.message || 'You do not have permission to generate reports for this project.',
+          false,
+        );
+      }
+
       await logAiSummaryAuditEvent({
         userId,
         projectId,
         filterSignature,
-        outcome: 'PERMISSION_DENIED',
-        errorCode: 'PERMISSION_DENIED',
+        outcome: 'INTERNAL_ERROR',
+        errorCode: 'INTERNAL',
       });
       return jsonError(
-        403,
-        'PERMISSION_DENIED',
-        'You do not have permission to generate reports for this project.',
+        500,
+        'INTERNAL',
+        'Unexpected error while checking permissions.',
         false,
       );
     }
@@ -367,7 +377,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // 6. Persist Report (type: AI_SUMMARY).
     const nowIso = new Date().toISOString();
-    const title = buildReportTitle(project.name, bodyProjectId, nowIso);
+    const title = buildReportTitle(undefined, bodyProjectId, nowIso);
 
     const reportWithoutId: Omit<Report, 'id'> = {
       projectId: bodyProjectId,
@@ -420,6 +430,33 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 200 },
     );
   } catch (err: any) {
+    if (err instanceof AuthRequiredError) {
+      await logAiSummaryAuditEvent({
+        userId: null,
+        projectId,
+        filterSignature,
+        outcome: 'AUTH_ERROR',
+        errorCode: 'UNAUTHENTICATED',
+      });
+      return jsonAuthError(401, 'UNAUTHENTICATED', err.message, false);
+    }
+
+    if (err instanceof AuthzError) {
+      await logAiSummaryAuditEvent({
+        userId,
+        projectId,
+        filterSignature,
+        outcome: 'PERMISSION_DENIED',
+        errorCode: 'PERMISSION_DENIED',
+      });
+      return jsonError(
+        403,
+        'PERMISSION_DENIED',
+        err.message || 'You do not have permission to perform this action.',
+        false,
+      );
+    }
+
     // Defensive catch-all to avoid leaking internal details.
     await logAiSummaryAuditEvent({
       userId,
@@ -518,106 +555,7 @@ async function findRecentMatchingSummary(
   return report;
 }
 
-/**
- * Auth helper:
- * Derive current userId reusing Firebase Auth on the server.
- *
- * Note:
- * - This mirrors existing patterns (client SDK usage) but should be adapted
- *   to your actual auth/session mechanism (e.g., cookies, Admin SDK).
- * - For now, we treat lack of a resolved user as unauthenticated.
- */
-async function getAuthenticatedUserId(_req: NextRequest): Promise<string | null> {
-  try {
-    // If you have a dedicated server-side auth helper (e.g., getCurrentUser),
-    // invoke it here instead. This placeholder checks the client auth export.
-    // In many Next.js + Firebase setups, you would validate a session cookie
-    // or Authorization header using the Admin SDK. Kept minimal per instructions.
-    if (!auth) {
-      return null;
-    }
 
-    // No direct server-side user from firebase/auth; expect integration to be
-    // wired via upstream middleware or replaced with a real implementation.
-    // Returning null here ensures we fail closed (UNAUTHENTICATED) until wired.
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Project access helper:
- * Load minimal project/checklist document for authorization decisions.
- *
- * Mirrors patterns from ai-project-summary flow (checklists as projects).
- */
-async function loadProjectForAccessCheck(projectId: string): Promise<{
-  id: string;
-  name: string;
-  ownerId?: string;
-  collaboratorIds?: string[];
-} | null> {
-  if (!db) {
-    return null;
-  }
-
-  const checklistsRef = collection(db, 'checklists');
-  const q = query(checklistsRef, where('id', '==', projectId), limit(1));
-  const snap = await getDocs(q);
-  if (snap.empty) {
-    return null;
-  }
-
-  const docSnap = snap.docs[0];
-  const data = docSnap.data() as any;
-
-  if (!data || typeof data.id !== 'string') {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: typeof data.name === 'string' ? data.name : 'Untitled Project',
-    ownerId: typeof data.ownerId === 'string' ? data.ownerId : undefined,
-    collaboratorIds: Array.isArray(data.collaboratorIds)
-      ? data.collaboratorIds.filter((v: any) => typeof v === 'string')
-      : undefined,
-  };
-}
-
-/**
- * Permission helper:
- * Ensure user has read + export/report capabilities.
- *
- * For now:
- * - Allow if user is owner or collaborator.
- * - Can be extended to role-based access controls as they are introduced.
- */
-function userHasReportPermission(
-  userId: string,
-  project: {
-    ownerId?: string;
-    collaboratorIds?: string[];
-  },
-): boolean {
-  if (!userId) return false;
-
-  if (project.ownerId && project.ownerId === userId) {
-    return true;
-  }
-
-  if (
-    project.collaboratorIds &&
-    Array.isArray(project.collaboratorIds) &&
-    project.collaboratorIds.includes(userId)
-  ) {
-    return true;
-  }
-
-  // Default deny; adjust when explicit export/report roles are added.
-  return false;
-}
 
 /**
  * Build a deterministic, human-readable report title.

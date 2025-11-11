@@ -7,6 +7,23 @@ import { getAuth, type Auth, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
+/**
+ * Client-side Firebase configuration.
+ *
+ * These values are read from NEXT_PUBLIC_* env vars so that:
+ * - No secrets are hardcoded in source.
+ * - In production, Firebase / Google Cloud App Hosting (or equivalent) injects
+ *   the values via environment variables, ideally sourced from Secret Manager
+ *   or managed runtime config.
+ *
+ * Required public (non-secret but env-managed) variables:
+ * - NEXT_PUBLIC_FIREBASE_API_KEY
+ * - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+ * - NEXT_PUBLIC_FIREBASE_PROJECT_ID
+ * - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+ * - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+ * - NEXT_PUBLIC_FIREBASE_APP_ID
+ */
 const firebaseConfig: FirebaseOptions = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -66,6 +83,7 @@ if (isFirebaseConfigured) {
   }
 } else {
   // Log a helpful message to the developer console without throwing.
+  // This is expected in local/dev when env vars are not configured.
   console.log(
     'Firebase configuration is missing or incomplete. The following keys were not found in the environment:',
     missingFirebaseConfigKeys.join(', '),
